@@ -1,0 +1,482 @@
+<title>Claude Code · Tool-Usage Telemetry</title>
+<style>
+  :root{
+    --ground:#12141A; --panel:#191C24; --line:#2A2E3A; --line2:#363B49;
+    --text:#ECEAE3; --muted:#8A8F9C; --dim:#5C6270;
+    --hot:#FF7A2D; --cool:#565E73;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --sans:system-ui,-apple-system,"Segoe UI",sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{background:var(--ground);color:var(--text);font-family:var(--sans);
+    margin:0;line-height:1.5;-webkit-font-smoothing:antialiased;
+    background-image:linear-gradient(var(--line) 1px,transparent 1px);
+    background-size:100% 56px;background-position:0 -1px;}
+  .wrap{max-width:940px;margin:0 auto;padding:0 24px 80px}
+
+  header{padding:56px 0 30px;border-bottom:1px solid var(--line)}
+  .eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.22em;color:var(--hot);margin:0 0 16px}
+  h1{font-size:clamp(30px,5vw,52px);font-weight:800;letter-spacing:-.025em;
+    line-height:1.04;margin:0 0 8px}
+  h1 .sub{display:block;color:var(--muted);font-weight:600;font-size:.44em;
+    letter-spacing:.01em;margin-top:13px}
+
+  /* ---- always-on badge (pinned in the skill ranking) ---- */
+  .badge{margin-left:8px;font-family:var(--mono);font-size:9.5px;letter-spacing:.06em;
+    background:var(--hot);color:#1A0E04;border-radius:3px;padding:2px 5px;font-weight:700;vertical-align:middle}
+  .badge.cond{background:var(--cool);color:var(--text)}
+  .afill{background:linear-gradient(90deg,var(--hot),#b5481a)!important}
+  .ct .ac{color:var(--hot);font-weight:700}
+  .rowdiv{display:flex;align-items:center;gap:10px;margin:4px 0 2px;
+    font-family:var(--mono);font-size:10px;letter-spacing:.14em;color:var(--dim)}
+  .rowdiv::after{content:"";flex:1;height:1px;background:var(--line)}
+
+  /* ---- filter rig ---- */
+  .filters{display:flex;flex-wrap:wrap;gap:10px 14px;align-items:flex-end;
+    margin:28px 0 6px}
+  .fld{display:flex;flex-direction:column;gap:5px}
+  .fld label{font-family:var(--mono);font-size:10px;letter-spacing:.16em;color:var(--dim)}
+  .seg{display:inline-flex;border:1px solid var(--line2);border-radius:6px;overflow:hidden}
+  .seg button{appearance:none;background:transparent;border:0;border-right:1px solid var(--line2);
+    color:var(--muted);font-family:var(--mono);font-size:12.5px;padding:8px 14px;cursor:pointer}
+  .seg button:last-child{border-right:0}
+  .seg button[aria-pressed=true]{background:var(--hot);color:#1A0E04;font-weight:700}
+  select,input[type=date],input[type=search]{appearance:none;background:var(--panel);
+    color:var(--text);border:1px solid var(--line2);border-radius:6px;
+    font-family:var(--mono);font-size:13px;padding:8px 11px;min-height:35px}
+  input[type=date]{color-scheme:dark}
+  select{padding-right:28px}
+  input[type=search]{min-width:150px}
+  .dates{display:flex;align-items:center;gap:7px}
+  .dates span{color:var(--dim);font-family:var(--mono);font-size:12px}
+  /* multi-select projects */
+  .ms{position:relative;font-family:var(--mono)}
+  .ms>summary{list-style:none;cursor:pointer;background:var(--panel);
+    border:1px solid var(--line2);border-radius:6px;font-size:13px;
+    padding:8px 11px;min-height:35px;display:flex;align-items:center;gap:8px;min-width:150px}
+  .ms>summary::-webkit-details-marker{display:none}
+  .ms>summary::after{content:"▾";color:var(--dim);margin-left:auto;font-size:11px}
+  .ms[open]>summary{border-color:var(--hot)}
+  #proj-sum{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:240px}
+  .ms-pop{position:absolute;z-index:20;top:calc(100% + 4px);left:0;width:max-content;
+    min-width:280px;max-width:min(92vw,620px);
+    background:var(--panel);border:1px solid var(--line2);border-radius:8px;
+    box-shadow:0 12px 30px rgba(0,0,0,.5);padding:8px}
+  .ms-act{display:flex;gap:6px;padding:2px 4px 8px;border-bottom:1px solid var(--line);margin-bottom:6px}
+  .ms-act button{flex:1;background:transparent;border:1px solid var(--line2);color:var(--muted);
+    border-radius:5px;font-family:var(--mono);font-size:11px;padding:5px;cursor:pointer}
+  #proj-list{max-height:300px;overflow:auto;display:flex;flex-direction:column}
+  #proj-list label{display:flex;align-items:flex-start;gap:9px;padding:6px 5px;font-size:12.5px;
+    color:var(--text);cursor:pointer;border-radius:5px;line-height:1.4;word-break:break-all}
+  #proj-list label:hover{background:var(--ground)}
+  #proj-list input{accent-color:var(--hot);width:14px;height:14px;flex:none;margin-top:2px}
+  .reset{background:transparent;border:1px solid var(--line2);color:var(--muted);
+    border-radius:6px;font-family:var(--mono);font-size:12px;padding:8px 12px;cursor:pointer;min-height:35px}
+
+  .total{display:flex;align-items:baseline;gap:16px;margin:24px 0 6px;flex-wrap:wrap}
+  .total .n{font-family:var(--mono);font-size:clamp(44px,9vw,86px);font-weight:700;
+    letter-spacing:-.04em;color:var(--text);line-height:.9;font-variant-numeric:tabular-nums}
+  .total .lab{font-family:var(--mono);font-size:12.5px;letter-spacing:.13em;color:var(--muted);max-width:260px}
+  .thesis{font-size:16px;color:var(--muted);max-width:64ch;margin:16px 0 26px}
+  .thesis b{color:var(--text);font-weight:700}
+  .thesis .pop{color:var(--hot);font-weight:700;font-family:var(--mono)}
+
+  .spark .cap{font-family:var(--mono);font-size:11px;letter-spacing:.13em;color:var(--dim);display:flex;justify-content:space-between;margin-top:6px}
+  canvas{display:block;width:100%;height:80px}
+
+  section{padding:42px 0 8px;border-bottom:1px solid var(--line)}
+  .shead{display:flex;align-items:baseline;gap:14px;margin-bottom:6px;flex-wrap:wrap}
+  .shead h2{font-size:22px;font-weight:800;letter-spacing:-.02em;margin:0}
+  .sk-seg{margin-left:auto;align-self:center}
+  .sk-seg button{font-size:11px;padding:5px 11px}
+  .shead .meta{font-family:var(--mono);font-size:12px;color:var(--dim);letter-spacing:.03em}
+  .snote{color:var(--muted);font-size:13.5px;margin:0 0 22px;max-width:66ch}
+  .empty{color:var(--dim);font-family:var(--mono);font-size:13px;padding:8px 0 16px}
+  .row.filler{visibility:hidden}
+
+  .rows{display:flex;flex-direction:column;gap:8px}
+  .row{display:grid;grid-template-columns:30px minmax(0,1.7fr) 1.3fr auto;align-items:center;gap:14px}
+  .rk{font-family:var(--mono);font-size:12px;color:var(--dim);text-align:right}
+  .nm{font-family:var(--mono);font-size:13.5px;color:var(--text);
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .nm .ns{color:var(--dim)}
+  .track{position:relative;height:22px;background:#000;border:1px solid var(--line);
+    border-radius:2px;overflow:hidden}
+  .fill{position:absolute;inset:0 100% 0 0;border-radius:1px;
+    transition:right .8s cubic-bezier(.16,.84,.34,1)}
+  .ct{font-family:var(--mono);font-size:13.5px;font-weight:700;text-align:right;
+    min-width:44px;font-variant-numeric:tabular-nums}
+  .ct .pct{display:block;font-size:10.5px;font-weight:400;color:var(--dim)}
+
+  footer{padding-top:36px;color:var(--dim);font-family:var(--mono);font-size:12px;line-height:1.8}
+  .legend{display:flex;align-items:center;gap:10px;font-family:var(--mono);font-size:11px;
+    letter-spacing:.12em;color:var(--dim);margin:26px 0 4px}
+  .pager{display:flex;align-items:center;gap:4px;margin-top:14px;flex-wrap:wrap}
+  .pager button{background:transparent;border:1px solid var(--line2);color:var(--muted);
+    border-radius:5px;font-family:var(--mono);font-size:12px;min-width:30px;padding:5px 8px;cursor:pointer}
+  .pager button[aria-current=true]{background:var(--hot);color:#1A0E04;border-color:var(--hot);font-weight:700}
+  .pager button:disabled{opacity:.35;cursor:default}
+  .pager .pgcount{margin-left:auto;color:var(--dim);font-size:11px}
+  .ramp{height:8px;width:150px;border-radius:4px;background:linear-gradient(90deg,var(--hot),var(--cool))}
+
+  @media (max-width:560px){
+    .row{grid-template-columns:22px 1fr auto}
+    .track{grid-column:1/4;height:8px;order:4}
+    .ct{min-width:0}
+    .filters{gap:10px}
+  }
+  @media (prefers-reduced-motion:reduce){.fill{transition:none}}
+</style>
+
+<div class="wrap">
+  <header>
+    <p class="eyebrow">Claude Code · Tool-Usage Telemetry</p>
+    <h1>What the agent actually did<span class="sub">Every tool_use across all projects · filter by who, where, when</span></h1>
+
+    <div class="filters">
+      <div class="fld"><label>Triggered by</label>
+        <div class="seg" id="f-by">
+          <button data-v="all" aria-pressed="true">All</button>
+          <button data-v="main">Direct</button>
+          <button data-v="agent">Delegated</button>
+        </div>
+      </div>
+      <div class="fld"><label>Projects</label>
+        <details class="ms" id="f-proj">
+          <summary><span id="proj-sum">All projects</span></summary>
+          <div class="ms-pop">
+            <div class="ms-act"><button type="button" id="proj-all">All</button><button type="button" id="proj-none">None</button></div>
+            <div id="proj-list"></div>
+          </div>
+        </details>
+      </div>
+      <div class="fld"><label>Date range</label>
+        <div class="dates"><input type="date" id="f-from"><span>→</span><input type="date" id="f-to"></div>
+      </div>
+      <div class="fld"><label>Filter tool</label><input type="search" id="f-q" placeholder="e.g. bash, figma…"></div>
+      <button class="reset" id="f-reset">Reset</button>
+    </div>
+
+    <div class="total">
+      <span class="n" id="total">0</span>
+      <span class="lab" id="totlab"></span>
+    </div>
+    <p class="thesis" id="thesis"></p>
+
+    <div class="spark">
+      <canvas id="spark" width="900" height="80" aria-label="Daily activity"></canvas>
+      <div class="cap"><span id="sparkA"></span><span>calls per day</span><span id="sparkB"></span></div>
+    </div>
+  </header>
+
+  <section id="s-spend">
+    <div class="shead"><h2>Spend</h2><span class="meta" id="m-spend"></span></div>
+    <p class="snote">Estimated API value by model, from <span style="font-family:var(--mono)">message.usage</span> tokens × list price (input/output + cache read 0.1× / write 1.25×). Subagent traffic counts under Delegated. A best-effort estimate — prices drift; update them in <span style="font-family:var(--mono)">build.sh</span>.</p>
+    <div class="rows" id="r-spend"></div>
+  </section>
+
+  <section id="s-skills">
+    <div class="shead"><h2>Skills</h2><span class="meta" id="m-skills"></span>
+      <div class="seg sk-seg" id="sk-origin">
+        <button data-v="all" aria-pressed="true">All</button>
+        <button data-v="user">User</button>
+        <button data-v="plugin">Plugin</button>
+      </div>
+    </div>
+    <p class="snote">Pinned <b style="color:var(--muted)">inject</b> rows = real SessionStart hook auto-injections (counted from transcript attachments, not the Skill tool), attributed per-machine from your installed plugins + settings. Below the divider, skills invoked via the Skill tool — <b style="color:var(--muted)">User</b> (bare name) vs <b style="color:var(--muted)">Plugin</b> (dimmed <span style="font-family:var(--mono)">namespace:</span> prefix).</p>
+    <div class="rows" id="r-skills"></div>
+    <div class="pager" id="pg-skills"></div>
+    <div class="legend"><span>low</span><span class="ramp"></span><span>high</span></div>
+  </section>
+
+  <section id="s-mcp">
+    <div class="shead"><h2>MCP tools</h2><span class="meta" id="m-mcp"></span></div>
+    <p class="snote">Calls into connected servers (Figma, Notion, Databricks…).</p>
+    <div class="rows" id="r-mcp"></div>
+    <div class="pager" id="pg-mcp"></div>
+  </section>
+
+  <section id="s-proj">
+    <div class="shead"><h2>Where</h2><span class="meta" id="m-proj"></span></div>
+    <p class="snote">Tool calls by project directory (ignores the project filter above).</p>
+    <div class="rows" id="r-proj"></div>
+    <div class="pager" id="pg-proj"></div>
+  </section>
+
+  <section id="s-tools">
+    <div class="shead"><h2>Tools</h2><span class="meta" id="m-tools"></span></div>
+    <p class="snote">All built-in tools. MCP calls fold into one <span style="font-family:var(--mono)">(MCP tools)</span> row here — see the MCP tools section above for the breakdown. <span style="font-family:var(--mono)">StructuredOutput</span> is the schema-return tool workflows use.</p>
+    <div class="rows" id="r-tools"></div>
+    <div class="pager" id="pg-tools"></div>
+  </section>
+
+  <footer>
+    Source: ~/.claude/projects/**/*.jsonl (full recursion) &nbsp;·&nbsp; generated <span id="gen"></span><br>
+    <b style="color:var(--muted)">Direct</b> = main-session calls. <b style="color:var(--muted)">Delegated</b> = calls by subagents &amp; workflows you launched. Rebuild: <span style="color:var(--muted)">./build.sh [days]</span>
+  </footer>
+</div>
+
+<script>
+/*__DATA__*/
+
+const $=s=>document.querySelector(s);
+const fmt=n=>n.toLocaleString('en-US');
+// ROWS: [date, triggered_by, project, tool, count]
+const ROWS=DATA.rows;
+const COL={date:0,by:1,proj:2,tool:3,n:4};
+// TOKENS: [date, by, project, model, input, output, cache_read, cw5m, cw1h]
+const TOKENS=DATA.tokens||[];
+const PRICE=DATA.price||{};
+const usd=n=>n>=100?'$'+Math.round(n).toLocaleString('en-US'):'$'+n.toFixed(2);
+function costOf(t){const p=PRICE[t[3]]; if(!p)return 0; const pin=p[0],pout=p[1];
+  return (t[4]*pin + t[5]*pout + t[6]*0.1*pin + t[7]*1.25*pin + t[8]*2*pin)/1e6;}
+
+const PROJECTS=[...new Set(ROWS.map(r=>r[2]))].sort();
+
+// stable skill roster = disk inventory ∪ every skill EVER used (so it doesn't
+// vanish when a narrow date filter has no calls for it). bare invocation → user.
+const SKILL_UNIVERSE=new Map();
+(DATA.skill_inv||[]).forEach(([leaf,origin,label])=>SKILL_UNIVERSE.set(leaf,{origin,label}));
+ROWS.forEach(r=>{if(r[3].startsWith('skill:')){
+  const full=r[3].slice(6), leaf=full.split(':').pop(), bare=!full.includes(':');
+  const cur=SKILL_UNIVERSE.get(leaf);
+  if(!cur) SKILL_UNIVERSE.set(leaf,{origin:bare?'user':'plugin',label:bare?leaf:full});
+  else if(bare && cur.origin!=='user') SKILL_UNIVERSE.set(leaf,{origin:'user',label:leaf});
+}});
+
+const allDates=ROWS.map(r=>r[0]).sort();
+const MIN=allDates[0], MAX=allDates[allDates.length-1];
+const DEF_FROM=(DATA.default_from && DATA.default_from>MIN)?DATA.default_from:MIN;
+
+const S={by:'all',projs:new Set(PROJECTS),from:DEF_FROM,to:MAX,q:'',skOrigin:'all',
+  page:{tools:0,skills:0,mcp:0,proj:0},_sig:''};
+const PAGE=20;
+
+// ---- controls ----
+$('#proj-list').innerHTML=PROJECTS.map(p=>
+  `<label><input type="checkbox" value="${p}" checked>${p}</label>`).join('');
+function syncProjs(){
+  S.projs=new Set([...document.querySelectorAll('#proj-list input:checked')].map(i=>i.value));
+  const n=S.projs.size, all=PROJECTS.length;
+  $('#proj-sum').textContent = n===all?'All projects' : n===0?'None' : n===1?[...S.projs][0] : n+' projects';
+  paint();
+}
+$('#proj-list').addEventListener('change',syncProjs);
+$('#proj-all').addEventListener('click',()=>{document.querySelectorAll('#proj-list input').forEach(i=>i.checked=true);syncProjs();});
+$('#proj-none').addEventListener('click',()=>{document.querySelectorAll('#proj-list input').forEach(i=>i.checked=false);syncProjs();});
+
+$('#f-from').value=DEF_FROM; $('#f-from').min=MIN; $('#f-from').max=MAX;
+$('#f-to').value=MAX;        $('#f-to').min=MIN;   $('#f-to').max=MAX;
+$('#gen').textContent=DATA.generated;
+
+$('#f-by').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;
+  S.by=b.dataset.v;
+  document.querySelectorAll('#f-by button').forEach(x=>x.setAttribute('aria-pressed',x===b));
+  paint();});
+$('#sk-origin').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;
+  S.skOrigin=b.dataset.v;
+  document.querySelectorAll('#sk-origin button').forEach(x=>x.setAttribute('aria-pressed',x===b));
+  paint();});
+$('#f-from').addEventListener('change',e=>{S.from=e.target.value;paint();});
+$('#f-to').addEventListener('change',e=>{S.to=e.target.value;paint();});
+$('#f-q').addEventListener('input',e=>{S.q=e.target.value.trim().toLowerCase();paint();});
+$('#f-reset').addEventListener('click',()=>{
+  S.by='all';S.from=DEF_FROM;S.to=MAX;S.q='';S.skOrigin='all';
+  document.querySelectorAll('#proj-list input').forEach(i=>i.checked=true);
+  $('#f-from').value=DEF_FROM;$('#f-to').value=MAX;$('#f-q').value='';
+  document.querySelectorAll('#f-by button').forEach(x=>x.setAttribute('aria-pressed',x.dataset.v==='all'));
+  document.querySelectorAll('#sk-origin button').forEach(x=>x.setAttribute('aria-pressed',x.dataset.v==='all'));
+  syncProjs();});
+
+// ---- aggregation ----
+const allProj=()=>S.projs.size===PROJECTS.length;
+function pass(r){return (S.by==='all'||r[1]===S.by) &&
+  (allProj()||S.projs.has(r[2])) && r[0]>=S.from && r[0]<=S.to;}
+function rollup(rows,keyfn){const m=new Map();
+  rows.forEach(r=>{const k=keyfn(r);if(k==null)return;m.set(k,(m.get(k)||0)+r[4]);});
+  return [...m.entries()].sort((a,b)=>b[1]-a[1]);}
+function display(tool){
+  if(tool.startsWith('mcp__'))return '(MCP tools)';
+  if(tool.startsWith('skill:'))return 'Skill';
+  return tool;}
+
+// ---- bar rendering with heat ramp ----
+const HOT=[255,122,45],COOL=[86,94,115];
+const lerp=(a,b,t)=>Math.round(a+(b-a)*t);
+const heat=t=>`rgb(${lerp(HOT[0],COOL[0],t)},${lerp(HOT[1],COOL[1],t)},${lerp(HOT[2],COOL[2],t)})`;
+function render(sel,pairs,total,opts){
+  opts=opts||{}; const host=$(sel); const key=opts.key;
+  if(S.q) pairs=pairs.filter(p=>{const m=p[2]||{}; return !m.divider && !m.always && p[0].toLowerCase().includes(S.q);});
+  const npages=Math.max(1,Math.ceil(pairs.length/PAGE));
+  let pg=Math.min(S.page[key]||0,npages-1); if(pg<0)pg=0; if(key)S.page[key]=pg;
+  const max=pairs.length?pairs[0][1]:1, lmax=Math.log(max+1), lmin=Math.log(2);
+  const slice=pairs.slice(pg*PAGE,pg*PAGE+PAGE);
+  // only pad to full PAGE height when there are multiple pages, so a later/partial
+  // page doesn't shrink. single-page lists (≤20) just use their natural height.
+  const pad = npages>1 ? PAGE-slice.length : 0;
+  const filler=`<div class="row filler"><span class="rk">00</span><span class="nm">—</span>`+
+    `<span class="track"></span><span class="ct">0${opts.pct?'<span class="pct">0%</span>':''}</span></div>`;
+  let html;
+  if(!slice.length){
+    html='<div class="empty">— nothing matches —</div>';
+  } else {
+    html=slice.map((item,j)=>{
+      const name=item[0], val=item[1], m=item[2]||{};
+      const i=pg*PAGE+j;
+      if(m.divider) return `<div class="rowdiv">${name}</div>`;
+      const rk=m.always?'✦':(m.rank!=null?String(m.rank).padStart(2,'0'):String(i+1).padStart(2,'0'));
+      if(m.always){
+        return `<div class="row arow"><span class="rk">${rk}</span>`+
+          `<span class="nm" title="${name} — auto-injected at session start (SessionStart hook)">${name}<span class="badge">inject</span></span>`+
+          `<span class="track"><span class="fill" data-w="${m.w}" style="background:${heat(m.heat)}"></span></span>`+
+          `<span class="ct">${fmt(val)}</span></div>`;
+      }
+      const t=(m.heat!=null)?m.heat:Math.min(1,Math.max(0,(lmax-Math.log(val+1))/((lmax-lmin)||1)));
+      const w=(m.w!=null)?m.w:Math.max(1.5,max?(val/max)*100:1.5);
+      const pct=opts.pct?`<span class="pct">${total?(val/total*100).toFixed(1):'0.0'}%</span>`:'';
+      let disp=name;
+      if(opts.mcp){const p=name.replace('mcp__','').split('__');
+        disp=`<span class="ns">${p.slice(0,-1).join('·')}·</span>${p[p.length-1]}`;}
+      if(opts.skill){const c=name.indexOf(':'); if(c>=0) disp=`<span class="ns">${name.slice(0,c+1)}</span>${name.slice(c+1)}`;}
+      return `<div class="row"><span class="rk">${rk}</span>`+
+        `<span class="nm" title="${name}">${disp}</span>`+
+        `<span class="track"><span class="fill" data-w="${w}" style="background:${heat(t)}"></span></span>`+
+        `<span class="ct">${fmt(val)}${pct}</span></div>`;
+    }).join('')+filler.repeat(pad);
+  }
+  host.innerHTML=html;
+  if(key) renderPager(key,pg,npages,pairs.length);
+}
+// spend rows: [model, cost, {tok}] — own renderer (cost is fractional, has a token subtitle)
+function renderSpend(pairs){
+  const host=$('#r-spend');
+  if(!pairs.length){host.innerHTML='<div class="empty">— no token usage in this slice —</div>';return;}
+  const max=pairs[0][1]||1, lmax=Math.log(max+1), lmin=Math.log(2);
+  host.innerHTML=pairs.map((p,i)=>{
+    const t=Math.min(1,Math.max(0,(lmax-Math.log(p[1]+1))/((lmax-lmin)||1)));
+    const w=Math.max(1.5,(p[1]/max)*100);
+    const tk=p[2].tok>=1e6?(p[2].tok/1e6).toFixed(1)+'M':Math.round(p[2].tok/1e3)+'k';
+    return `<div class="row"><span class="rk">${String(i+1).padStart(2,'0')}</span>`+
+      `<span class="nm" title="${p[0]}">${p[0]}</span>`+
+      `<span class="track"><span class="fill" data-w="${w}" style="background:${heat(t)}"></span></span>`+
+      `<span class="ct">${usd(p[1])}<span class="pct">${tk} tok</span></span></div>`;}).join('');
+}
+function renderPager(key,pg,npages,count){
+  const el=$('#pg-'+key); if(!el)return;
+  if(npages<=1){el.innerHTML='';return;}
+  let nums=''; for(let i=0;i<npages;i++) nums+=`<button data-pg="${i}"${i===pg?' aria-current="true"':''}>${i+1}</button>`;
+  el.innerHTML=`<button data-pg="${pg-1}"${pg===0?' disabled':''}>‹</button>${nums}`+
+    `<button data-pg="${pg+1}"${pg>=npages-1?' disabled':''}>›</button>`+
+    `<span class="pgcount">${count} items</span>`;
+}
+document.addEventListener('click',e=>{const b=e.target.closest('.pager button'); if(!b||b.disabled)return;
+  const key=b.closest('.pager').id.replace('pg-',''); S.page[key]=+b.dataset.pg; paint();});
+
+// ---- sparkline (fills date gaps with 0) ----
+const cv=$('#spark'),ctx=cv.getContext('2d');
+function daySeries(rows){
+  const m=new Map(); rows.forEach(r=>m.set(r[0],(m.get(r[0])||0)+r[4]));
+  const out=[]; let d=new Date(S.from+'T00:00:00'), end=new Date(S.to+'T00:00:00');
+  while(d<=end){const k=d.toISOString().slice(0,10); out.push([k,m.get(k)||0]); d.setDate(d.getDate()+1);}
+  return out;
+}
+function drawSpark(days){
+  if(!days.length)return;
+  $('#sparkA').textContent=days[0][0]; $('#sparkB').textContent=days[days.length-1][0];
+  const dpr=window.devicePixelRatio||1,W=cv.clientWidth,H=80;
+  cv.width=W*dpr;cv.height=H*dpr;ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,W,H);
+  const max=Math.max(1,...days.map(d=>d[1])),n=days.length;
+  const x=i=>n<2?W/2:i/(n-1)*(W-2)+1, y=v=>H-4-(v/max)*(H-12);
+  const g=ctx.createLinearGradient(0,0,0,H);
+  g.addColorStop(0,'rgba(255,122,45,.42)');g.addColorStop(1,'rgba(255,122,45,0)');
+  ctx.beginPath();ctx.moveTo(x(0),H);days.forEach((d,i)=>ctx.lineTo(x(i),y(d[1])));
+  ctx.lineTo(x(n-1),H);ctx.closePath();ctx.fillStyle=g;ctx.fill();
+  ctx.beginPath();days.forEach((d,i)=>i?ctx.lineTo(x(i),y(d[1])):ctx.moveTo(x(i),y(d[1])));
+  ctx.strokeStyle='#FF7A2D';ctx.lineWidth=2;ctx.lineJoin='round';ctx.stroke();
+  if(n<=45) days.forEach((d,i)=>{ctx.beginPath();ctx.arc(x(i),y(d[1]),2,0,7);ctx.fillStyle='#FF7A2D';ctx.fill();});
+}
+
+// ---- main repaint ----
+let curDays=[];
+function paint(){
+  const sig=`${S.by}|${[...S.projs].sort().join(',')}|${S.from}|${S.to}|${S.q}|${S.skOrigin}`;
+  if(sig!==S._sig){S._sig=sig; S.page={tools:0,skills:0,mcp:0,proj:0};}
+  const rows=ROWS.filter(pass);
+  const total=rows.reduce((a,r)=>a+r[4],0);
+  const tools=rollup(rows,r=>display(r[3]));
+
+  // counts from filtered window, mapped over the stable roster (0-use still shows)
+  const skCount={};
+  rows.forEach(r=>{if(r[3].startsWith('skill:')){const leaf=r[3].slice(6).split(':').pop();
+    skCount[leaf]=(skCount[leaf]||0)+r[4];}});
+  let skillRows=[...SKILL_UNIVERSE.entries()].map(([leaf,inf])=>
+    ({label:inf.label,origin:inf.origin,count:skCount[leaf]||0}));
+  if(S.skOrigin!=='all') skillRows=skillRows.filter(s=>s.origin===S.skOrigin);
+  skillRows.sort((a,b)=>b.count-a.count || a.label.localeCompare(b.label));
+  const barOf=(v,mx)=>{const lmx=Math.log(mx+1),lmn=Math.log(2);
+    return {w:Math.max(1.5,mx?(v/mx)*100:1.5),
+            heat:Math.min(1,Math.max(0,(lmx-Math.log(v+1))/((lmx-lmn)||1)))};};
+  const cmax=skillRows.length?skillRows[0].count:1;
+  const counted=skillRows.map((s,i)=>{const b=barOf(s.count,cmax);
+    return [s.label,s.count,{rank:i+1,w:b.w,heat:b.heat}];});
+  // real auto-injection firings (hook attachments), filtered, on their own scale
+  let al=[];
+  if(S.skOrigin!=='user'){
+    const ic={};
+    (DATA.injects||[]).filter(pass).forEach(r=>{ic[r[3]]=(ic[r[3]]||0)+r[4];});
+    const ent=Object.entries(ic).sort((a,b)=>b[1]-a[1]);
+    const imax=ent.length?ent[0][1]:1;
+    al=ent.map(([src,c])=>{const b=barOf(c,imax);
+      return [src,c,{always:true,w:b.w,heat:b.heat}];});
+  }
+  const skills=al.length
+    ? al.concat([['auto-injected via hook ↑ · Skill-tool counted ↓',0,{divider:true}]],counted)
+    : counted;
+  const unusedN=skillRows.filter(s=>s.count===0).length;
+
+  const mcp=rollup(rows.filter(r=>r[3].startsWith('mcp__')),r=>r[3]);
+  const proj=rollup(ROWS.filter(r=>(S.by==='all'||r[1]===S.by)&&r[0]>=S.from&&r[0]<=S.to),r=>r[2]);
+
+  $('#total').textContent=fmt(total);
+  const scope=S.by==='main'?'direct':S.by==='agent'?'delegated':'all layers';
+  const pscope=allProj()?'':S.projs.size===1?' · '+[...S.projs][0]:` · ${S.projs.size} projects`;
+  $('#totlab').innerHTML=`tool calls · ${scope}${pscope}`;
+
+  const top=tools[0];
+  const agentN=rows.filter(r=>r[1]==='agent').reduce((a,r)=>a+r[4],0);
+  $('#thesis').innerHTML = total===0
+    ? 'No activity in this slice — widen the date range or change filters.'
+    : `<span class="pop">${top[0]}</span> leads this slice at <span class="pop">${(top[1]/total*100).toFixed(0)}%</span> of ${fmt(total)} calls`
+      + (S.by==='all' && agentN>0
+          ? `, and <b>${(agentN/total*100).toFixed(0)}% ran inside subagents &amp; workflows</b> you dispatched.`
+          : '.');
+
+  render('#r-tools',tools,total,{pct:true,key:'tools'});
+  render('#r-skills',skills,total,{skill:true,key:'skills'});
+  render('#r-mcp',mcp,total,{mcp:true,key:'mcp'});
+  render('#r-proj',proj,total,{key:'proj'});
+
+  // spend: tokens filtered by the same by/project/date window (pass() works on token rows too)
+  const toks=TOKENS.filter(pass);
+  const byModel={}; let totCost=0, totTok=0;
+  toks.forEach(t=>{const c=costOf(t), tt=t[4]+t[5]+t[6]+t[7]+t[8];
+    totCost+=c; totTok+=tt;
+    (byModel[t[3]]=byModel[t[3]]||{cost:0,tok:0}); byModel[t[3]].cost+=c; byModel[t[3]].tok+=tt;});
+  const spendPairs=Object.entries(byModel).sort((a,b)=>b[1].cost-a[1].cost)
+    .map(([m,v])=>[m,v.cost,{tok:v.tok}]);
+  renderSpend(spendPairs);
+  $('#m-spend').textContent=usd(totCost)+' est · '+(totTok/1e6).toFixed(1)+'M tokens';
+
+  $('#m-tools').textContent=tools.length+' kinds';
+  $('#m-skills').textContent=skillRows.length+' skills · '+unusedN+' unused'+(al.length?' · '+al.length+' auto-inject':'');
+  $('#m-mcp').textContent=mcp.length+' endpoints · '+mcp.reduce((a,b)=>a+b[1],0)+' calls';
+  $('#m-proj').textContent=proj.length+' dirs';
+
+  curDays=daySeries(rows); drawSpark(curDays);
+  requestAnimationFrame(()=>requestAnimationFrame(()=>{
+    document.querySelectorAll('.fill').forEach(el=>el.style.right=(100-parseFloat(el.dataset.w))+'%');
+  }));
+}
+window.addEventListener('resize',()=>drawSpark(curDays));
+paint();
+</script>
