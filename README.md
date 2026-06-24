@@ -84,5 +84,8 @@ Rather pre-authorize than click? Add this once to `~/.claude/settings.json`:
 - `TOOLYTICS_HOME` — output directory (default `~/.toolytics`)
 - `TOOLYTICS_OPEN=0` — skip auto-opening the browser
 - `TOOLYTICS_TRIM="a,b"` — strip leading path segments from project labels (cosmetic)
+- `TOOLYTICS_INJECT_ALIAS="check-setup.sh=superpowers"` — relabel an inject source
+  whose plugin can't be auto-resolved (a hook script deleted across versions before
+  it was ever scanned). One run seeds the persistent attribution cache. Empty by default.
 
 For the design and rationale, see [AGENTS.md](AGENTS.md).

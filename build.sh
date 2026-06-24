@@ -51,7 +51,22 @@ m = {'"${CLAUDE_PLUGIN_ROOT}/hooks/run-hook.cmd" session-start': 'superpowers',
 assert resolve('"${CLAUDE_PLUGIN_ROOT}/hooks/run-hook.cmd" session-start', m) == 'superpowers'
 assert resolve('Loading Karpathy guidelines...', m) == 'karpathy'   # statusMessage path
 assert resolve('bash /some/unknown/thing.sh', m) == '?'             # unknown -> fallback
-print("selfcheck OK: 5 assertions passed")
+
+# 6. learned cache (no-regress) + opt-in alias — mirror of attrib_inject's resolution.
+def attrib(cmd, disk_resolved, disk_fallback, learned, alias):
+    hi = disk_resolved.get(cmd)
+    raw = hi or learned.get(cmd) or disk_fallback.get(cmd) or cmd.split('/')[-1]
+    lab = alias.get(raw, raw)
+    if hi or lab != raw: learned[cmd] = lab
+    return lab
+L = {}
+assert attrib('cmdA', {'cmdA': 'superpowers'}, {}, L, {}) == 'superpowers'  # disk resolves -> learn
+assert L.get('cmdA') == 'superpowers'
+assert attrib('cmdA', {}, {}, L, {}) == 'superpowers', "learned cache regressed to basename after disk skew"
+La = {}                                                                     # orphan predating cache:
+assert attrib('x/check-setup.sh', {}, {}, La, {'check-setup.sh': 'superpowers'}) == 'superpowers'
+assert La.get('x/check-setup.sh') == 'superpowers', "alias did not seed the cache"
+print("selfcheck OK: all assertions passed")
 PY
   exit 0
 fi
@@ -130,35 +145,63 @@ def clean_label(s):
     return tok or s
 
 def build_inject_map():
-    m = {}
+    # split high-confidence (plugin name derived from a path) from low-confidence
+    # (cleaned basename / statusMessage). only the former is worth persisting, so a
+    # later version skew can't downgrade a once-resolved label to a bare basename.
+    resolved, fallback = {}, {}
+    def add(key, plugin):
+        if not key: return
+        if plugin: resolved.setdefault(key, plugin)
+        else: fallback.setdefault(key, clean_label(key))
     for f in glob.glob(os.path.expanduser('~/.claude/plugins/**/hooks.json'), recursive=True):
         try: cfg = json.load(open(f))
         except Exception: continue
         plugin = plugin_from_path(f)
         for grp in (cfg.get('hooks', {}) or {}).get('SessionStart', []) or []:
             for h in grp.get('hooks', []) or []:
-                cmd = (h.get('command') or '').strip()
-                sm  = (h.get('statusMessage') or '').strip()
-                if cmd: m.setdefault(cmd, plugin or clean_label(cmd))
-                if sm:  m.setdefault(sm,  plugin or clean_label(sm))
+                add((h.get('command') or '').strip(), plugin)
+                add((h.get('statusMessage') or '').strip(), plugin)
     for sf in ('~/.claude/settings.json', '~/.claude/settings.local.json'):
         try: cfg = json.load(open(os.path.expanduser(sf)))
         except Exception: continue
         for grp in (cfg.get('hooks', {}) or {}).get('SessionStart', []) or []:
             for h in grp.get('hooks', []) or []:
                 cmd = (h.get('command') or '').strip()
-                sm  = (h.get('statusMessage') or '').strip()
-                # statusMessage hooks log the statusMessage as `command`; map both.
-                if sm:  m.setdefault(sm,  plugin_in_cmd(cmd) or clean_label(sm))
-                if cmd: m.setdefault(cmd, plugin_in_cmd(cmd) or clean_label(cmd))
-    return m
-INJECT_MAP = build_inject_map()
+                pl = plugin_in_cmd(cmd)                          # user-settings cmd may name a plugin path
+                add((h.get('statusMessage') or '').strip(), pl)  # statusMessage is logged as `command`
+                add(cmd, pl)
+    return resolved, fallback
+DISK_RESOLVED, DISK_FALLBACK = build_inject_map()
+
+# learned attribution cache (per machine, persistent at out/inject-map.json): a
+# command string -> label, remembered while it was resolvable. when a plugin later
+# renames or deletes its SessionStart hook script, current disk can no longer name
+# it — the cache still can. this is the GENERAL fix for version skew (works for any
+# plugin, not a per-plugin alias); monotonic — current disk always wins and refreshes.
+LEARN_PATH = os.path.join(out, 'inject-map.json')
+try: LEARNED = json.load(open(LEARN_PATH))
+except Exception: LEARNED = {}
+LEARNED.update(DISK_RESOLVED)
+
+# opt-in relabel for orphans that predate the cache (a hook deleted before toolytics
+# ever scanned it — e.g. an old superpowers check-setup.sh). portable: empty by
+# default, the user supplies it. TOOLYTICS_INJECT_ALIAS="check-setup.sh=superpowers,foo=bar"
+ALIAS = {}
+for pair in (os.environ.get('TOOLYTICS_INJECT_ALIAS') or '').split(','):
+    if '=' in pair:
+        k, v = pair.split('=', 1); ALIAS[k.strip()] = v.strip()
+
 def attrib_inject(a):
     if a.get('type') != 'hook_success' or a.get('hookEvent') != 'SessionStart':
         return None
     cmd = (a.get('command') or '').strip()
     if not cmd: return None
-    return INJECT_MAP.get(cmd) or clean_label(cmd)      # exact match, else cleaned fallback
+    hi  = DISK_RESOLVED.get(cmd)                                          # high-confidence (on disk now)
+    raw = hi or LEARNED.get(cmd) or DISK_FALLBACK.get(cmd) or clean_label(cmd)
+    lab = ALIAS.get(raw, raw)
+    if hi or lab != raw:            # disk-resolved or user-aliased -> remember (also seeds from alias)
+        LEARNED[cmd] = lab
+    return lab
 
 # --- 1. full scan of everything currently on disk (no time window) ---
 # ponytail: full rescan each run (~2s now). If files balloon, switch to mtime-incremental.
@@ -244,6 +287,7 @@ tool_rows = merge_write(os.path.join(out, 'history.csv'),
 inj_rows = merge_write(os.path.join(out, 'injects.csv'),
     ['date', 'triggered_by', 'project', 'source', 'count'],
     load(os.path.join(out, 'injects.csv'), 5), inj)
+json.dump(LEARNED, open(LEARN_PATH, 'w'), indent=0, sort_keys=True)  # persist learned attributions
 
 # tokens DB: 5 token fields collapse into one wide row per (date,by,proj,model)
 tpath = os.path.join(out, 'tokens.csv')

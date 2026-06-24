@@ -93,11 +93,26 @@ filterable dashboard. (All projects combined, last N days.)
     the plugin name. So **no hardcoding**: every build reverse-maps from disk —
     scan `~/.claude/plugins/**/hooks.json` (plugin name = path) +
     `~/.claude/settings*.json` (SessionStart hooks' command·statusMessage) to build
-    a `{logged command string → label}` map, **exact-match** the logged command,
-    and fall back to a cleaned form on a miss. → self-configuring for any plugin in
-    anyone's environment (verified: superpowers/watch/ponytail/karpathy-skills all
-    resolve cleanly). The `inject`/`status` distinction isn't portable, so it was
-    dropped (everything is `inject`).
+    a `{logged command string → label}` map, split into high-confidence (plugin
+    name derived from a path) and low-confidence (cleaned basename / statusMessage).
+    Resolution order per logged command: current-disk high-confidence → **learned
+    cache** → current-disk fallback → cleaned basename. → self-configuring for any
+    plugin in anyone's environment (verified: superpowers/watch/ponytail/
+    karpathy-skills all resolve cleanly). The `inject`/`status` distinction isn't
+    portable, so it was dropped (everything is `inject`).
+  - **Version-skew problem & the learned cache** (`inject-map.json` in `out`): a
+    plugin can rename/delete its SessionStart hook command across versions. Since
+    injects.csv stores the label and re-scan replaces it by date, a once-correct
+    label would silently degrade to a bare basename (e.g. old superpowers
+    `check-setup.sh`) and **freeze there permanently** once the source logs rotate.
+    Fix: every build persists the high-confidence command→label resolutions into a
+    per-machine cache; when current disk can no longer name a command, the cache
+    still can. Monotonic — current disk always wins and refreshes. This is GENERAL
+    (any plugin's skew), not a per-plugin patch. For orphans that predate the cache
+    (a hook deleted before toolytics ever scanned it), the opt-in
+    `TOOLYTICS_INJECT_ALIAS="check-setup.sh=superpowers,…"` relabels them **and seeds
+    the cache** — one run with the env fixes it permanently (the daemon then keeps it
+    without the env). Empty by default → portable, nothing baked into the distro.
   - injects now accumulate into `injects.csv` with the **same date-replace strategy
     as history.csv** → past injects survive log rotation.
 - **Meaning of scanned_dates**: "if disk has even one line for that date," the scan
@@ -106,8 +121,9 @@ filterable dashboard. (All projects combined, last N days.)
   content" → past history for days with zero tool_use could be silently wiped
   (fixed). Every line with a timestamp does `scanned_dates.add(d)`.
 - **self-check**: `./build.sh --selfcheck` — asserts the replace-by-date merge
-  (idempotent · preserves rotated dates · clears covered-but-empty dates) and the
-  inject reverse-mapping (exact-match on command·statusMessage), 5 assertions. A
+  (idempotent · preserves rotated dates · clears covered-but-empty dates), the
+  inject reverse-mapping (exact-match on command·statusMessage), and the learned
+  cache (no regression to a basename after disk skew) + opt-in alias seeding. A
   regression guard for the non-trivial logic.
 - **Project labels**: default is the home-relative path (`hsc/rain/foo`). The
   personal hardcoded convention (`hsc/` trim) was removed → safe to distribute. To
@@ -117,8 +133,10 @@ filterable dashboard. (All projects combined, last N days.)
   collision (same-named user/plugin counts get merged) — rare and fiddly to fix
   well, so deferred.
 - **Dashboard UI**: 20-per-page pagination on every section (pad to 20 rows only
-  when multi-page), heat-ramp bars, **never** `text-transform:uppercase` (preserve
-  original case — [[feedback_no_forced_case]]).
+  when multi-page); pinned rows (Skills' inject pins + divider) render above the
+  slice and **don't count toward the page budget**, so page 1 shows a full 20
+  ranked rows (was showing 20-minus-pins). heat-ramp bars, **never**
+  `text-transform:uppercase` (preserve original case — [[feedback_no_forced_case]]).
 - **Dashboard filters**: triggered_by (All/Direct/Delegated) · project · date range
   (native date input) · tool search. All re-aggregated client-side in JS.
   Heat-ramp bars (bigger value → hotter orange).
@@ -142,6 +160,8 @@ filterable dashboard. (All projects combined, last N days.)
   (date,triggered_by,project,model,input,output,cache_read,cw5m,cw1h)
 - (generated, `~/.toolytics/`) `injects.csv` — auto-injection cumulative DB
   (date,triggered_by,project,source,count)
+- (generated, `~/.toolytics/`) `inject-map.json` — learned command→label attribution
+  cache (monotonic; survives plugin hook version skew)
 - (generated, `~/.toolytics/`) `dashboard.html` — self-contained dashboard with
   data inlined
 - (generated, `~/.toolytics/`) `scheduler.log` — daily collector daemon run log
