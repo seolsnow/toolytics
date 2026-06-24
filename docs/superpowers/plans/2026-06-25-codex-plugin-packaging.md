@@ -10,7 +10,7 @@
 
 ## Global Constraints
 
-- The plugin is named `toolytics`, and its manifest version is `0.1.6`.
+- The plugin is named `toolytics`; its base manifest version remains `0.1.6`. Local Codex reinstall builds may append one `+codex.<cachebuster>` suffix; do not change the Claude manifest version.
 - Keep `hooks/hooks.json` unchanged; it is the shared SessionStart daemon guard.
 - Do not create a personal marketplace, symlink, copied plugin source, MCP server, app, or asset.
 - `.agents/plugins/marketplace.json` points its local source path at `./`, the repository-root plugin.
@@ -45,7 +45,9 @@ skill = (root / 'skills/toolytics/SKILL.md').read_text()
 hook = json.loads((root / 'hooks/hooks.json').read_text())
 
 assert manifest['name'] == 'toolytics'
-assert manifest['version'] == '0.1.6'
+base_version, _, cachebuster = manifest['version'].partition('+')
+assert base_version == '0.1.6'
+assert not cachebuster or cachebuster.startswith('codex.')
 assert manifest['skills'] == './skills/'
 assert 'hooks' not in manifest
 assert marketplace['plugins'][0]['source'] == {'source': 'local', 'path': './'}
@@ -160,7 +162,9 @@ skill = (root / 'skills/toolytics/SKILL.md').read_text()
 hook = json.loads((root / 'hooks/hooks.json').read_text())
 
 assert manifest['name'] == 'toolytics'
-assert manifest['version'] == '0.1.6'
+base_version, _, cachebuster = manifest['version'].partition('+')
+assert base_version == '0.1.6'
+assert not cachebuster or cachebuster.startswith('codex.')
 assert manifest['skills'] == './skills/'
 assert 'hooks' not in manifest
 assert marketplace['plugins'][0]['source'] == {'source': 'local', 'path': './'}
