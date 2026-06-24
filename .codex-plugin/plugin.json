@@ -1,0 +1,23 @@
+{
+  "name": "toolytics",
+  "version": "0.1.6",
+  "description": "Local Claude Code and Codex tool-usage dashboard with a daily collector",
+  "author": { "name": "seolsnow" },
+  "homepage": "https://github.com/seolsnow/toolytics",
+  "repository": "https://github.com/seolsnow/toolytics",
+  "license": "MIT",
+  "keywords": ["codex", "claude-code", "dashboard", "usage"],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "toolytics",
+    "shortDescription": "Your Claude Code and Codex usage dashboard",
+    "longDescription": "Build a local dashboard of Claude Code and Codex tool usage, preserved by a daily collector.",
+    "developerName": "seolsnow",
+    "category": "Productivity",
+    "capabilities": ["Read", "Write"],
+    "defaultPrompt": [
+      "Open my toolytics dashboard.",
+      "Build my tool usage dashboard for the last 7 days."
+    ]
+  }
+}

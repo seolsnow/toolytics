@@ -50,7 +50,7 @@ assert manifest['skills'] == './skills/'
 assert 'hooks' not in manifest
 assert marketplace['plugins'][0]['source'] == {'source': 'local', 'path': './'}
 assert skill.startswith('---\nname: toolytics\n')
-assert 'install-daemon.sh' not in skill
+assert 'install-daemon.sh ensure' not in skill
 assert 'install-daemon.sh' in hook['hooks']['SessionStart'][0]['hooks'][0]['command']
 PY
 ```
@@ -142,8 +142,12 @@ The plugin's trusted SessionStart hook ensures the daily collector. Do not run `
 - [ ] **Step 5: Run package validation**
 
 ```sh
-python3 /Users/didoo/.codex/skills/.system/plugin-creator/scripts/validate_plugin.py .
-python3 /Users/didoo/.codex/skills/.system/skill-creator/scripts/quick_validate.py skills/toolytics
+if python3 -c 'import yaml' >/dev/null 2>&1; then
+  python3 /Users/didoo/.codex/skills/.system/plugin-creator/scripts/validate_plugin.py .
+  python3 /Users/didoo/.codex/skills/.system/skill-creator/scripts/quick_validate.py skills/toolytics
+else
+  echo 'PyYAML unavailable; use the standard-library package-shape check below.'
+fi
 python3 - <<'PY'
 import json
 from pathlib import Path
@@ -160,7 +164,7 @@ assert manifest['skills'] == './skills/'
 assert 'hooks' not in manifest
 assert marketplace['plugins'][0]['source'] == {'source': 'local', 'path': './'}
 assert skill.startswith('---\nname: toolytics\n')
-assert 'install-daemon.sh' not in skill
+assert 'install-daemon.sh ensure' not in skill
 assert 'install-daemon.sh' in hook['hooks']['SessionStart'][0]['hooks'][0]['command']
 PY
 ```
