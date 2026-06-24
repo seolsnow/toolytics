@@ -52,9 +52,12 @@ filterable dashboard. (All projects combined, last N days.)
   or standalone (cloned-repo) user registers the daily collector by running
   `install-daemon.sh` themselves (once; idempotent). Data *collection* needs no
   install — `build.sh` scans both transcript roots regardless of how it was
-  invoked. macOS is live-verified (exit 0); the
-  **Linux branch is a standard pattern but unverified on this machine**. Log:
-  `~/.toolytics/scheduler.log`.
+  invoked. macOS is live-verified (exit 0); the Linux systemd `--user` timer
+  path is verified on WSL2. **All three backends write run output to
+  `~/.toolytics/scheduler.log`**: launchd via `StandardOutPath`/`StandardErrorPath`,
+  cron via `>> "$LOG" 2>&1`, and systemd via `StandardOutput=append:` /
+  `StandardError=append:` on the service (without those directives systemd would
+  route output to the journal instead, not the log file).
 - **Permission prompts & expected UX (configuration-dependent)**: toolytics does
   not alter Claude Code permissions or try to grant itself access. The
   SessionStart hook and the `/toolytics` Bash command can be approved or

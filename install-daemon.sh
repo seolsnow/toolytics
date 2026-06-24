@@ -81,6 +81,8 @@ Type=oneshot
 Environment=TOOLYTICS_OPEN=0
 Environment=PATH=$PYDIR:/usr/bin:/bin:/usr/sbin:/sbin
 ExecStart=/bin/bash "$BUILD"
+StandardOutput=append:$LOG
+StandardError=append:$LOG
 UNITEOF
     cat > "$UD/toolytics.timer" <<UNITEOF
 [Unit]
@@ -113,7 +115,8 @@ mac_ensure() {
 lin_ensure() {
   if command -v systemctl >/dev/null 2>&1; then
     { systemctl --user is-enabled toolytics.timer >/dev/null 2>&1 \
-      && grep -Fq "$BUILD" "$UD/toolytics.service" 2>/dev/null; } || lin_install
+      && grep -Fq "$BUILD" "$UD/toolytics.service" 2>/dev/null \
+      && grep -Fq "append:$LOG" "$UD/toolytics.service" 2>/dev/null; } || lin_install
   else
     ( crontab -l 2>/dev/null | grep "# $LABEL" | grep -Fq "$BUILD" ) || lin_install
   fi
