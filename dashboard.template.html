@@ -91,6 +91,14 @@
   .sk-seg button{font-size:11px;padding:5px 11px}
   .shead .meta{font-family:var(--mono);font-size:12px;color:var(--dim);letter-spacing:.03em}
   .snote{color:var(--muted);font-size:13.5px;margin:0 0 22px;max-width:66ch}
+  .unused-skills{margin-top:18px;border-top:1px solid var(--line);padding-top:13px}
+  .unused-skills summary{display:flex;align-items:baseline;gap:12px;cursor:pointer;
+    color:var(--muted);font-family:var(--mono);font-size:12px;letter-spacing:.04em}
+  .unused-skills summary::-webkit-details-marker{display:none}
+  .unused-skills summary::before{content:"▸";color:var(--dim)}
+  .unused-skills[open] summary::before{content:"▾"}
+  .unused-skills .rows{margin-top:14px}
+  .unused-skills .meta{margin-left:auto;color:var(--dim)}
   .empty{color:var(--dim);font-family:var(--mono);font-size:13px;padding:8px 0 16px}
   .row.filler{visibility:hidden}
 
@@ -180,6 +188,14 @@
     <p class="snote">Pinned <b style="color:var(--muted)">inject</b> rows = real SessionStart hook auto-injections (counted from transcript attachments, not the Skill tool), attributed per-machine from your installed plugins + settings. Below the divider, skills invoked via the Skill tool — <b style="color:var(--muted)">User</b> (bare name) vs <b style="color:var(--muted)">Plugin</b> (dimmed <span style="font-family:var(--mono)">namespace:</span> prefix).</p>
     <div class="rows" id="r-skills"></div>
     <div class="pager" id="pg-skills"></div>
+    <details class="unused-skills" id="unused-skills">
+      <summary>
+        <span>Unused in this filter</span>
+        <span class="meta" id="m-unused-skills"></span>
+      </summary>
+      <div class="rows" id="r-unused-skills"></div>
+      <div class="pager" id="pg-unused-skills"></div>
+    </details>
     <div class="legend"><span>low</span><span class="ramp"></span><span>high</span></div>
   </section>
 
@@ -239,7 +255,7 @@ const MIN=allDates[0]||DATA.default_from, MAX=allDates[allDates.length-1]||DATA.
 const DEF_FROM=(DATA.default_from && DATA.default_from>MIN)?DATA.default_from:MIN;
 
 const S={by:'all',projs:new Set(PROJECTS),from:DEF_FROM,to:MAX,q:'',skOrigin:'all',
-  page:{tools:0,skills:0,mcp:0,proj:0},_sig:''};
+  page:{tools:0,skills:0,'unused-skills':0,mcp:0,proj:0},_sig:''};
 const PAGE=20;
 // transcript-derived strings (project, tool, mcp method, skill/inject label) are
 // interpolated into innerHTML — escape so an odd name can't break layout or inject markup.
@@ -280,6 +296,7 @@ $('#f-reset').addEventListener('click',()=>{
   $('#f-from').value=DEF_FROM;$('#f-to').value=MAX;$('#f-q').value='';
   document.querySelectorAll('#f-by button').forEach(x=>x.setAttribute('aria-pressed',x.dataset.v==='all'));
   document.querySelectorAll('#sk-origin button').forEach(x=>x.setAttribute('aria-pressed',x.dataset.v==='all'));
+  S.page={tools:0,skills:0,'unused-skills':0,mcp:0,proj:0};
   syncProjs();});
 
 // ---- aggregation ----
@@ -385,7 +402,7 @@ let curDays=[];
 let firstPaint=true;   // bars fill-animate once on load; re-renders (paging/filter) set instantly
 function paint(){
   const sig=`${S.by}|${[...S.projs].sort().join(',')}|${S.from}|${S.to}|${S.q}|${S.skOrigin}`;
-  if(sig!==S._sig){S._sig=sig; S.page={tools:0,skills:0,mcp:0,proj:0};}
+  if(sig!==S._sig){S._sig=sig; S.page={tools:0,skills:0,'unused-skills':0,mcp:0,proj:0};}
   const rows=ROWS.filter(pass);
   const total=rows.reduce((a,r)=>a+r[4],0);
   const tools=rollup(rows,r=>display(r[3]));
@@ -401,9 +418,16 @@ function paint(){
   const barOf=(v,mx)=>{const lmx=Math.log(mx+1),lmn=Math.log(2);
     return {w:Math.max(1.5,mx?(v/mx)*100:1.5),
             heat:Math.min(1,Math.max(0,(lmx-Math.log(v+1))/((lmx-lmn)||1)))};};
-  const cmax=skillRows.length?skillRows[0].count:1;
-  const counted=skillRows.map((s,i)=>{const b=barOf(s.count,cmax);
-    return [s.label,s.count,{rank:i+1,w:b.w,heat:b.heat}];});
+  const activeSkillRows=skillRows.filter(s=>s.count>0);
+  const unusedSkillRows=skillRows.filter(s=>s.count===0)
+    .sort((a,b)=>a.label.localeCompare(b.label));
+  const toSkillPairs=items=>{
+    const max=items.length?items[0].count:0;
+    return items.map((s,i)=>{const b=barOf(s.count,max);
+      return [s.label,s.count,{rank:i+1,w:b.w,heat:b.heat}];});
+  };
+  const counted=toSkillPairs(activeSkillRows);
+  const unused=toSkillPairs(unusedSkillRows);
   // real auto-injection firings (hook attachments), filtered, on their own scale
   let al=[];
   if(S.skOrigin!=='user'){
@@ -419,7 +443,6 @@ function paint(){
   const skPinned=al.length
     ? al.concat([['auto-injected via hook ↑ · Skill-tool counted ↓',0,{divider:true}]])
     : [];
-  const unusedN=skillRows.filter(s=>s.count===0).length;
 
   const mcp=rollup(rows.filter(r=>r[3].startsWith('mcp__')),r=>r[3]);
   const proj=rollup(ROWS.filter(r=>(S.by==='all'||r[1]===S.by)&&r[0]>=S.from&&r[0]<=S.to),r=>r[2]);
@@ -440,11 +463,15 @@ function paint(){
 
   render('#r-tools',tools,total,{pct:true,key:'tools'});
   render('#r-skills',counted,total,{skill:true,key:'skills',pinned:skPinned});
+  render('#r-unused-skills',unused,total,{skill:true,key:'unused-skills'});
   render('#r-mcp',mcp,total,{mcp:true,key:'mcp'});
   render('#r-proj',proj,total,{key:'proj'});
 
+  const unusedN=unusedSkillRows.length;
   $('#m-tools').textContent=tools.length+' kinds';
-  $('#m-skills').textContent=skillRows.length+' skills · '+unusedN+' unused'+(al.length?' · '+al.length+' auto-inject':'');
+  $('#m-skills').textContent=activeSkillRows.length+' active · '+unusedN+' unused'+(al.length?' · '+al.length+' auto-inject':'');
+  $('#m-unused-skills').textContent=unusedN+' skills';
+  $('#unused-skills').hidden=unusedN===0;
   $('#m-mcp').textContent=mcp.length+' endpoints · '+mcp.reduce((a,b)=>a+b[1],0)+' calls';
   $('#m-proj').textContent=proj.length+' dirs';
 
