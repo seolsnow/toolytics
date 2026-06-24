@@ -1,19 +1,19 @@
-# toolytics — Claude Code usage dashboard
+# toolytics — Claude Code + Codex usage dashboard
 
 ## Purpose
-Aggregate skill/tool usage from my Claude Code session transcripts into a
+Aggregate tool usage from my Claude Code and Codex session transcripts into a
 filterable dashboard. (All projects combined, last N days.)
 
 ## How it works / context
-- **Data source**: `~/.claude/projects/**/*.jsonl` (fully recursive). The logs
-  Claude Code writes for every conversation as line-delimited JSON. The per-line
+- **Data sources**: `~/.claude/projects/**/*.jsonl` and
+  `~/.codex/sessions/**/*.jsonl` (both fully recursive). The per-line
   `timestamp` field drives the window filter.
 - **Two layers** — the key distinction:
-  - `main` = calls I made directly in the main session (≈4.6k).
-  - `agent` = calls a subagent/workflow I spawned made on my behalf. Path
-    contains `/subagents/`. Research delegation, so mostly Read/WebFetch/WebSearch.
-    **About 2/3 of the total** (≈8.7k) — easy to miss.
-- **Tidy table schema**: `date, triggered_by(main|agent), project, tool, count`.
+  - `main` = calls I made directly in the main session.
+  - `agent` = calls a subagent/workflow I spawned made on my behalf. Claude
+    identifies these by `/subagents/` in the path; Codex identifies a session by
+    `thread_source: subagent` or `source.subagent` metadata.
+- **Tidy table schema**: `date, runtime(claude|codex), triggered_by(main|agent), project, tool, count`.
   Skill calls go into `tool` as `skill:<name>`; MCP keeps the raw
   `mcp__server__method` form.
 - **Reproduce/build**: `./build.sh [VIEW_DAYS]` (default 30) → full scan →
@@ -24,8 +24,9 @@ filterable dashboard. (All projects combined, last N days.)
   - The dashboard template is `dashboard.template.html` in this folder; JSON is
     injected at the `/*__DATA__*/` slot.
 - **Cumulative strategy (core)**: the scan reads every jsonl on disk with no time
-  window. All three cumulative DBs (`history.csv`/`tokens.csv`/`injects.csv`) are
-  merged by **replace-by-date** — dates the scan covered get their rows replaced
+  window. `history.csv` is merged by **replace-by-covered-group**
+  (`date,runtime,triggered_by,project`); Claude-only `tokens.csv` and `injects.csv`
+  use their equivalent Claude group. Covered rows get replaced
   wholesale (= rerunning doesn't inflate them, idempotent), while older dates the
   scan didn't see are preserved. So even if logs rotate/are deleted, past
   aggregates survive and keep accumulating. Only the dashboard's default view is
@@ -69,7 +70,7 @@ filterable dashboard. (All projects combined, last N days.)
   ever used in the full history → zero-count skills always show (`DATA.skill_inv`).
   Pinned client-side as `SKILL_UNIVERSE`; only the counts react to the filter
   window. user/plugin toggle (presence of a colon; a bare name prefers user).
-- **Tokens·cost** (`DATA.tokens`, `tokens.csv`): per-line `message.usage`
+- **Tokens·cost** (`DATA.tokens`, `tokens.csv`; Claude Code only): per-line `message.usage`
   (input/output/cache_read/cache_creation 5m·1h) aggregated by
   `(date,by,project,model)`. Models are normalized (`claude-opus-4-8`→`opus-4-8`,
   etc.). Cost = tokens × list price (input/output + cache read 0.1× / cache write
@@ -79,7 +80,7 @@ filterable dashboard. (All projects combined, last N days.)
   cost 0 but their tokens still show. `build.sh` echoes the estimated total API
   value after accumulating. (The dashboard Spend section was removed — token
   collection · `tokens.csv` · cost aggregation are kept.)
-- **Auto-injection, measured** (`DATA.injects`): counts only transcript
+- **Auto-injection, measured** (`DATA.injects`; Claude Code only): counts only transcript
   `attachment.type=hook_success` + `hookEvent=SessionStart` (superpowers also
   emits a duplicate `hook_additional_context`, which is skipped → one row per
   firing). Empty-output hooks aren't logged at all, so things that don't actually
@@ -113,12 +114,12 @@ filterable dashboard. (All projects combined, last N days.)
     without the env). Empty by default → portable, nothing baked into the distro.
   - injects now accumulate into `injects.csv` with the **same date-replace strategy
     as history.csv** → past injects survive log rotation.
-- **Meaning of scanned_dates**: "if disk has even one line for that date," the scan
-  is authoritative for it (= all three tables tool/token/inject get that date's
-  rows replaced wholesale). It used to be wrongly gated on "days with assistant
-  content" → past history for days with zero tool_use could be silently wiped
-  (fixed). Every line with a timestamp does `scanned_dates.add(d)`.
-- **self-check**: `./build.sh --selfcheck` — asserts the replace-by-date merge
+- **Meaning of covered groups**: any timestamped line makes its source/runtime,
+  trigger layer, project, and date authoritative. That group gets replaced
+  wholesale, but another runtime or project on the same date is preserved.
+- **self-check**: `./build.sh --selfcheck` — asserts merge behavior,
+  legacy Claude-history migration, Codex main/subagent attribution and both
+  Codex call payload types, plus the inject reverse-mapping
   (idempotent · preserves rotated dates · clears covered-but-empty dates), the
   inject reverse-mapping (exact-match on command·statusMessage), and the learned
   cache (no regression to a basename after disk skew) + opt-in alias seeding. A
@@ -135,8 +136,9 @@ filterable dashboard. (All projects combined, last N days.)
   slice and **don't count toward the page budget**, so page 1 shows a full 20
   ranked rows (was showing 20-minus-pins). heat-ramp bars, **never**
   `text-transform:uppercase` (preserve original case — [[feedback_no_forced_case]]).
-- **Dashboard filters**: triggered_by (All/Direct/Delegated) · project · date range
-  (native date input) · tool search. All re-aggregated client-side in JS.
+- **Dashboard filters**: runtime (All/Claude/Codex) · triggered_by
+  (All/Direct/Delegated) · project · date range (native date input) · tool search.
+  All tool rows re-aggregate client-side in JS.
   Heat-ramp bars (bigger value → hotter orange).
 - Artifact URL: https://claude.ai/code/artifact/f680d4ec-5c2c-4590-8ee5-6fb5af7cd0fa
 
@@ -153,7 +155,7 @@ filterable dashboard. (All projects combined, last N days.)
 - `hooks/hooks.json` — SessionStart self-install guard (calls `install-daemon.sh
   ensure` → auto-registers the daemon).
 - (generated, `~/.toolytics/`) `history.csv` — tool cumulative DB
-  (date,triggered_by,project,tool,count)
+  (date,runtime,triggered_by,project,tool,count)
 - (generated, `~/.toolytics/`) `tokens.csv` — token cumulative DB
   (date,triggered_by,project,model,input,output,cache_read,cw5m,cw1h)
 - (generated, `~/.toolytics/`) `injects.csv` — auto-injection cumulative DB

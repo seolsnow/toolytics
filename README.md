@@ -1,20 +1,18 @@
 # toolytics
 
-A self-contained dashboard for **your own Claude Code usage** — which skills,
-tools, and MCP methods you actually reach for, and how often.
+A self-contained dashboard for **your own Claude Code and Codex usage** — which
+tools and MCP methods you actually reach for, and how often.
 
 ## What it does (and why you'd want it)
 
-Claude Code logs every session to `~/.claude/projects/**/*.jsonl`, but never
-shows you the aggregate. toolytics reads those transcripts and answers
-questions you otherwise can't:
+Claude Code and Codex log sessions locally, but neither shows you the
+aggregate. toolytics reads `~/.claude/projects/**/*.jsonl` and
+`~/.codex/sessions/**/*.jsonl` and answers questions you otherwise can't:
 
 - **What do I actually use?** Every tool, `skill:<name>` invocation, and
   `mcp__server__method` call, ranked by count across *all* your projects.
-- **Direct vs. delegated.** It splits calls you made yourself in the main
-  session from calls your subagents/workflows made for you. The delegated
-  layer is usually **~2/3 of all calls** (mostly Read/WebFetch/WebSearch from
-  research agents) — invisible if you only eyeball your own session.
+- **Claude vs. Codex, direct vs. delegated.** Filter the two runtimes, then
+  split main-session calls from calls your subagents/workflows made for you.
 - **What am I spending?** A **Tokens & API value** section shows per-model token
   totals and an estimated API list value (also in `tokens.csv` + `build.sh`
   output). It's an estimate from list prices, not a bill.
@@ -24,9 +22,10 @@ questions you otherwise can't:
 - **Skills you never use.** The roster includes every installed skill, so
   zero-count ones still show up.
 
-Everything is filterable in the browser (by direct/delegated, project, date
-range, tool search) — the dashboard is one self-contained HTML file with the
-data inlined, so you can open or share it offline.
+Everything is filterable in the browser (by runtime, direct/delegated, project,
+date range, tool search) — the dashboard is one self-contained HTML file with
+the data inlined, so you can open or share it offline. Token, cost, injection,
+and skill-inventory data currently come from Claude Code only.
 
 It also **outlives log cleanup.** Claude Code deletes transcripts after
 ~30 days; toolytics keeps a cumulative CSV and (optionally) installs a daily

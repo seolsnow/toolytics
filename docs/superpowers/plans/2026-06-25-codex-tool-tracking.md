@@ -53,12 +53,16 @@ Pass "$SRC/build.sh" as sys.argv[1] to the self-check Python block. Add this exa
             with open(os.path.join(root, name), 'w') as fh:
                 fh.writelines(json.dumps(row) + '\n' for row in rows)
         out = os.path.join(home, 'out')
+        os.makedirs(out)
+        with open(os.path.join(out, 'history.csv'), 'w') as fh:
+            fh.write('date,triggered_by,project,tool,count\n2026-01-01,main,legacy,Read,7\n')
         subprocess.run([script, '1'], check=True, env={**os.environ, 'HOME': home,
                        'TOOLYTICS_HOME': out, 'TOOLYTICS_OPEN': '0'})
         with open(os.path.join(out, 'history.csv')) as fh:
             got = list(csv.DictReader(fh))
         assert {(r['runtime'], r['triggered_by'], r['tool']) for r in got} == {
-            ('codex', 'main', 'exec_command'), ('codex', 'agent', 'exec')}
+            ('claude', 'main', 'Read'), ('codex', 'main', 'exec_command'),
+            ('codex', 'agent', 'exec')}
 
 - [ ] **Step 2: Verify RED**
 
