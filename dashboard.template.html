@@ -376,6 +376,7 @@ function drawSpark(days){
 
 // ---- main repaint ----
 let curDays=[];
+let firstPaint=true;   // bars fill-animate once on load; re-renders (paging/filter) set instantly
 function paint(){
   const sig=`${S.by}|${[...S.projs].sort().join(',')}|${S.from}|${S.to}|${S.q}|${S.skOrigin}`;
   if(sig!==S._sig){S._sig=sig; S.page={tools:0,skills:0,mcp:0,proj:0};}
@@ -442,9 +443,13 @@ function paint(){
   $('#m-proj').textContent=proj.length+' dirs';
 
   curDays=daySeries(rows); drawSpark(curDays);
-  requestAnimationFrame(()=>requestAnimationFrame(()=>{
-    document.querySelectorAll('.fill').forEach(el=>el.style.right=(100-parseFloat(el.dataset.w))+'%');
-  }));
+  const setFills=anim=>document.querySelectorAll('.fill').forEach(el=>{
+    if(!anim) el.style.transition='none';            // paging/filter re-render: no replay
+    el.style.right=(100-parseFloat(el.dataset.w))+'%';
+  });
+  if(firstPaint){ firstPaint=false;                  // animate the fill-up only on initial load
+    requestAnimationFrame(()=>requestAnimationFrame(()=>setFills(true)));
+  } else setFills(false);
 }
 window.addEventListener('resize',()=>drawSpark(curDays));
 paint();
