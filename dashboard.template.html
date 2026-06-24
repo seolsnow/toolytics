@@ -241,6 +241,10 @@ const DEF_FROM=(DATA.default_from && DATA.default_from>MIN)?DATA.default_from:MI
 const S={by:'all',projs:new Set(PROJECTS),from:DEF_FROM,to:MAX,q:'',skOrigin:'all',
   page:{tools:0,skills:0,mcp:0,proj:0},_sig:''};
 const PAGE=20;
+// transcript-derived strings (project, tool, mcp method, skill/inject label) are
+// interpolated into innerHTML — escape so an odd name can't break layout or inject markup.
+// must be defined before the proj-list render below (const = no hoisting / TDZ).
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
 // ---- controls ----
 $('#proj-list').innerHTML=PROJECTS.map(p=>
@@ -294,9 +298,6 @@ function display(tool){
 const HOT=[255,122,45],COOL=[86,94,115];
 const lerp=(a,b,t)=>Math.round(a+(b-a)*t);
 const heat=t=>`rgb(${lerp(HOT[0],COOL[0],t)},${lerp(HOT[1],COOL[1],t)},${lerp(HOT[2],COOL[2],t)})`;
-// transcript-derived strings (project, tool, mcp method, skill/inject label) are
-// interpolated into innerHTML — escape so an odd name can't break layout or inject markup.
-const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 function render(sel,pairs,total,opts){
   opts=opts||{}; const host=$(sel); const key=opts.key;
   let pinned = opts.pinned || [];
