@@ -21,27 +21,29 @@ if [ "${1:-}" = "--selfcheck" ]; then
 # ponytail: the only non-trivial logic here is replace-by-date merge + the
 # inject reverse-map. One runnable check each; fails loudly if either regresses.
 import datetime
-def merge_by_date(existing, scanned_dates, new_rows, keylen):
-    # mirror of the merge in the main script: drop existing rows whose date the
-    # scan covered (scan is authoritative for those), keep the rest, add new.
-    hist = {k: v for k, v in existing.items() if k[0] not in scanned_dates}
+def merge_by_group(existing, scanned_groups, new_rows):
+    # mirror of the merge in the main script: drop existing rows whose (date,by,project)
+    # GROUP the scan covered (scan is authoritative for those), keep the rest, add new.
+    hist = {k: v for k, v in existing.items() if (k[0], k[1], k[2]) not in scanned_groups}
     hist.update(new_rows)
     return hist
 
 # 1. idempotent: re-merging the same scan twice == once (re-run doesn't inflate)
 old = {('2026-01-01','main','p','Bash'): 5, ('2026-01-02','main','p','Read'): 9}
 scan = {('2026-01-02','main','p','Read'): 9, ('2026-01-02','main','p','Edit'): 2}
-sd = {'2026-01-02'}
-once = merge_by_date(old, sd, scan, 4)
-twice = merge_by_date(once, sd, scan, 4)
-assert once == twice, "merge not idempotent"
-# 2. rotated-out date preserved (2026-01-01 not in scan -> kept)
-assert once[('2026-01-01','main','p','Bash')] == 5, "rotated date wiped"
-# 3. covered date replaced wholesale (old Read=9 stays via scan, no stale leftovers)
+g = {('2026-01-02','main','p')}
+once = merge_by_group(old, g, scan)
+assert once == merge_by_group(once, g, scan), "merge not idempotent"
+# 2. rotated-out group preserved (2026-01-01 group not in scan -> kept)
+assert once[('2026-01-01','main','p','Bash')] == 5, "rotated group wiped"
+# 3. covered group replaced wholesale (scan value wins, no stale leftovers)
 assert ('2026-01-02','main','p','Edit') in once and once[('2026-01-02','main','p','Read')] == 9
-# 4. a date the scan covered but produced nothing for is fully cleared
-old2 = {('2026-02-01','main','p','Bash'): 7}
-assert merge_by_date(old2, {'2026-02-01'}, {}, 4) == {}, "covered-empty date not cleared"
+# 4. a group the scan covered but produced nothing for is fully cleared
+assert merge_by_group({('2026-02-01','main','p','Bash'): 7}, {('2026-02-01','main','p')}, {}) == {}, "covered-empty group not cleared"
+# 5. partial deletion: SAME date, project B's logs gone but A still on disk -> B's rows preserved
+mixed = {('2026-03-01','main','A','Read'): 4, ('2026-03-01','main','B','Read'): 8}
+kept = merge_by_group(mixed, {('2026-03-01','main','A')}, {('2026-03-01','main','A','Read'): 4})
+assert kept[('2026-03-01','main','B','Read')] == 8, "partial-date deletion wiped an untouched project"
 
 # 5. inject reverse-map: exact-match on command string AND on statusMessage
 def resolve(cmd, m):
@@ -227,7 +229,9 @@ for d, fs in bydir.items():
 scan   = collections.Counter()   # (date, by, project, tool) -> count
 tok    = collections.Counter()   # (date, by, project, model, field) -> tokens
 inj    = collections.Counter()   # (date, by, project, source) -> firings
-scanned_dates = set()            # every date present on disk -> scan is authoritative for it
+scanned_groups = set()           # (date,by,project) groups present on disk -> scan is authoritative
+                                 # for each. finer than whole-date: a date with project A still on
+                                 # disk but project B's logs deleted won't wipe B's accumulated rows.
 for f in files:
     by   = 'agent' if '/subagents/' in f else 'main'
     proj = labels[f.split('/projects/')[1].split('/')[0]]
@@ -237,7 +241,7 @@ for f in files:
         t = pts(o.get('timestamp', '') or '')
         if not t: continue
         d = t.date().isoformat()
-        scanned_dates.add(d)                            # any timestamped record == date is on disk
+        scanned_groups.add((d, by, proj))              # any timestamped record == this group is on disk
         if o.get('type') == 'attachment':
             isrc = attrib_inject(o.get('attachment') or {})
             if isrc: inj[(d, by, proj, isrc)] += 1
@@ -274,7 +278,7 @@ def load(path, ncols):
                     h[tuple(key)] = int(val)
     return h
 def merge_write(path, header, existing, scan_counter):
-    hist = {k: v for k, v in existing.items() if k[0] not in scanned_dates}
+    hist = {k: v for k, v in existing.items() if (k[0], k[1], k[2]) not in scanned_groups}
     hist.update(scan_counter)
     rows = sorted([list(k) + [v] for k, v in hist.items()])
     with open(path, 'w', newline='') as fh:
@@ -303,7 +307,7 @@ if os.path.exists(tpath):
 tok_wide = collections.defaultdict(lambda: [0, 0, 0, 0, 0])
 for (d, by, proj, model, field), v in tok.items():
     tok_wide[(d, by, proj, model)][TFIELDS.index(field)] += v
-tok_hist = {k: v for k, v in tok_existing.items() if k[0] not in scanned_dates}
+tok_hist = {k: v for k, v in tok_existing.items() if (k[0], k[1], k[2]) not in scanned_groups}
 tok_hist.update(tok_wide)
 tok_rows = sorted([list(k) + v for k, v in tok_hist.items()])
 with open(tpath, 'w', newline='') as fh:

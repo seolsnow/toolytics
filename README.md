@@ -1,7 +1,7 @@
 # toolytics
 
 A self-contained dashboard for **your own Claude Code usage** — which skills,
-tools, and MCP methods you actually reach for, how often, and what they cost.
+tools, and MCP methods you actually reach for, and how often.
 
 ## What it does (and why you'd want it)
 
@@ -15,8 +15,9 @@ questions you otherwise can't:
   session from calls your subagents/workflows made for you. The delegated
   layer is usually **~2/3 of all calls** (mostly Read/WebFetch/WebSearch from
   research agents) — invisible if you only eyeball your own session.
-- **What am I spending?** Per-model token totals and an estimated API value,
-  from the `message.usage` records in the logs.
+- **What am I spending?** Per-model token totals and an estimated API value are
+  aggregated to `tokens.csv` and echoed by `build.sh` (the dashboard itself shows
+  usage, not cost — query the CSV for the breakdown).
 - **Which skills auto-fire?** Real counts of SessionStart hook injections
   (the skills/guidance silently prepended to your sessions), so you can see
   what's actually running vs. just installed.

@@ -79,7 +79,8 @@ Description=toolytics daily usage scan
 [Service]
 Type=oneshot
 Environment=TOOLYTICS_OPEN=0
-ExecStart=/bin/bash $BUILD
+Environment=PATH=$PYDIR:/usr/bin:/bin:/usr/sbin:/sbin
+ExecStart=/bin/bash "$BUILD"
 UNITEOF
     cat > "$UD/toolytics.timer" <<UNITEOF
 [Unit]
@@ -95,19 +96,26 @@ UNITEOF
     loginctl enable-linger "$USER" 2>/dev/null || true   # run even when logged out (best-effort)
     echo "installed systemd --user timer toolytics.timer (daily $(printf '%02d:%02d' "$HOUR" "$MIN"))"
   else
-    local line="$MIN $HOUR * * * TOOLYTICS_OPEN=0 PATH=$PYDIR:/usr/bin:/bin /bin/bash $BUILD >> $LOG 2>&1 # $LABEL"
+    local line="$MIN $HOUR * * * TOOLYTICS_OPEN=0 PATH=$PYDIR:/usr/bin:/bin /bin/bash \"$BUILD\" >> \"$LOG\" 2>&1 # $LABEL"
     ( crontab -l 2>/dev/null | grep -v "# $LABEL" || true; echo "$line" ) | crontab -
     echo "installed cron job (daily $(printf '%02d:%02d' "$HOUR" "$MIN")); systemd not found"
   fi
 }
 
-# ---------- ensure: install only if not already present (no-op when healthy) ----------
-mac_ensure() { launchctl print "gui/$(id -u)/$LABEL" >/dev/null 2>&1 || mac_install; }
+# ---------- ensure: install if missing OR if the registered build path is stale ----------
+# a plugin version bump moves build.sh (cache/.../0.1.1 -> 0.1.2); the old path is then
+# deleted and the daily collector would silently die. so ensure must also refresh when the
+# registered command no longer points at the current $BUILD — not just when it's absent.
+mac_ensure() {
+  launchctl print "gui/$(id -u)/$LABEL" >/dev/null 2>&1 \
+    && grep -Fq "<string>$BUILD</string>" "$PLIST" 2>/dev/null || mac_install
+}
 lin_ensure() {
   if command -v systemctl >/dev/null 2>&1; then
-    systemctl --user is-enabled toolytics.timer >/dev/null 2>&1 || lin_install
+    { systemctl --user is-enabled toolytics.timer >/dev/null 2>&1 \
+      && grep -Fq "$BUILD" "$UD/toolytics.service" 2>/dev/null; } || lin_install
   else
-    crontab -l 2>/dev/null | grep -q "# $LABEL" || lin_install
+    ( crontab -l 2>/dev/null | grep "# $LABEL" | grep -Fq "$BUILD" ) || lin_install
   fi
 }
 

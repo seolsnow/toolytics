@@ -233,7 +233,9 @@ ROWS.forEach(r=>{if(r[3].startsWith('skill:')){
 }});
 
 const allDates=ROWS.map(r=>r[0]).sort();
-const MIN=allDates[0], MAX=allDates[allDates.length-1];
+// fall back to default_from (always set by build.sh, = today when there's no data)
+// so a fresh/empty install doesn't init the date filters to undefined.
+const MIN=allDates[0]||DATA.default_from, MAX=allDates[allDates.length-1]||DATA.default_from;
 const DEF_FROM=(DATA.default_from && DATA.default_from>MIN)?DATA.default_from:MIN;
 
 const S={by:'all',projs:new Set(PROJECTS),from:DEF_FROM,to:MAX,q:'',skOrigin:'all',
@@ -242,7 +244,7 @@ const PAGE=20;
 
 // ---- controls ----
 $('#proj-list').innerHTML=PROJECTS.map(p=>
-  `<label><input type="checkbox" value="${p}" checked>${p}</label>`).join('');
+  `<label><input type="checkbox" value="${esc(p)}" checked>${esc(p)}</label>`).join('');
 function syncProjs(){
   S.projs=new Set([...document.querySelectorAll('#proj-list input:checked')].map(i=>i.value));
   const n=S.projs.size, all=PROJECTS.length;
@@ -292,6 +294,9 @@ function display(tool){
 const HOT=[255,122,45],COOL=[86,94,115];
 const lerp=(a,b,t)=>Math.round(a+(b-a)*t);
 const heat=t=>`rgb(${lerp(HOT[0],COOL[0],t)},${lerp(HOT[1],COOL[1],t)},${lerp(HOT[2],COOL[2],t)})`;
+// transcript-derived strings (project, tool, mcp method, skill/inject label) are
+// interpolated into innerHTML — escape so an odd name can't break layout or inject markup.
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 function render(sel,pairs,total,opts){
   opts=opts||{}; const host=$(sel); const key=opts.key;
   let pinned = opts.pinned || [];
@@ -307,24 +312,24 @@ function render(sel,pairs,total,opts){
   const filler=`<div class="row filler"><span class="rk">00</span><span class="nm">—</span>`+
     `<span class="track"></span><span class="ct">0${opts.pct?'<span class="pct">0%</span>':''}</span></div>`;
   const rowHtml=(item,i)=>{
-    const name=item[0], val=item[1], m=item[2]||{};
-    if(m.divider) return `<div class="rowdiv">${name}</div>`;
+    const name=item[0], val=item[1], m=item[2]||{}, en=esc(name);
+    if(m.divider) return `<div class="rowdiv">${en}</div>`;
     const rk=m.always?'✦':(m.rank!=null?String(m.rank).padStart(2,'0'):String(i+1).padStart(2,'0'));
     if(m.always){
       return `<div class="row arow"><span class="rk">${rk}</span>`+
-        `<span class="nm" title="${name} — auto-injected at session start (SessionStart hook)">${name}<span class="badge">inject</span></span>`+
+        `<span class="nm" title="${en} — auto-injected at session start (SessionStart hook)">${en}<span class="badge">inject</span></span>`+
         `<span class="track"><span class="fill" data-w="${m.w}" style="background:${heat(m.heat)}"></span></span>`+
         `<span class="ct">${fmt(val)}</span></div>`;
     }
     const t=(m.heat!=null)?m.heat:Math.min(1,Math.max(0,(lmax-Math.log(val+1))/((lmax-lmin)||1)));
     const w=(m.w!=null)?m.w:Math.max(1.5,max?(val/max)*100:1.5);
     const pct=opts.pct?`<span class="pct">${total?(val/total*100).toFixed(1):'0.0'}%</span>`:'';
-    let disp=name;
+    let disp=en;
     if(opts.mcp){const p=name.replace('mcp__','').split('__');
-      disp=`<span class="ns">${p.slice(0,-1).join('·')}·</span>${p[p.length-1]}`;}
-    if(opts.skill){const c=name.indexOf(':'); if(c>=0) disp=`<span class="ns">${name.slice(0,c+1)}</span>${name.slice(c+1)}`;}
+      disp=`<span class="ns">${esc(p.slice(0,-1).join('·'))}·</span>${esc(p[p.length-1])}`;}
+    if(opts.skill){const c=name.indexOf(':'); if(c>=0) disp=`<span class="ns">${esc(name.slice(0,c+1))}</span>${esc(name.slice(c+1))}`;}
     return `<div class="row"><span class="rk">${rk}</span>`+
-      `<span class="nm" title="${name}">${disp}</span>`+
+      `<span class="nm" title="${en}">${disp}</span>`+
       `<span class="track"><span class="fill" data-w="${w}" style="background:${heat(t)}"></span></span>`+
       `<span class="ct">${fmt(val)}${pct}</span></div>`;
   };
