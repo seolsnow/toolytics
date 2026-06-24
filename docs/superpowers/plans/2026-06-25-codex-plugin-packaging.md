@@ -54,8 +54,7 @@ assert marketplace['plugins'][0]['source'] == {'source': 'local', 'path': './'}
 assert skill.startswith('---\nname: toolytics\n')
 assert 'install-daemon.sh ensure' not in skill
 hook_command = hook['hooks']['SessionStart'][0]['hooks'][0]['command']
-assert 'install-daemon.sh' in hook_command
-assert 'ensure' in hook_command
+assert '"${CLAUDE_PLUGIN_ROOT}/install-daemon.sh" ensure' in hook_command
 PY
 ```
 
@@ -175,8 +174,7 @@ assert 'install-daemon.sh ensure' not in skill
 assert 'find "$HOME/.codex/plugins/cache/toolytics/toolytics/" -name build.sh -print -quit' in skill
 assert 'local' + '/build.sh' not in skill
 hook_command = hook['hooks']['SessionStart'][0]['hooks'][0]['command']
-assert 'install-daemon.sh' in hook_command
-assert 'ensure' in hook_command
+assert '"${CLAUDE_PLUGIN_ROOT}/install-daemon.sh" ensure' in hook_command
 PY
 ```
 
