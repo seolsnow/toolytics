@@ -239,7 +239,7 @@ Add the following artifacts and replace the existing Claude-only hook note:
 - [ ] **Step 3: Verify documentation and commit**
 
 ```sh
-if rg -n 'Codex has no|Claude-Code-only|personal marketplace|symlink' README.md AGENTS.md docs/superpowers/specs/2026-06-25-codex-plugin-packaging-design.md; then exit 1; fi
+if rg -n 'Codex has no Claude-style plugin/SessionStart hook|This auto-registration is Claude-Code-only|Claude Code only.*Codex' README.md AGENTS.md; then exit 1; fi
 git diff --check
 git add README.md AGENTS.md
 git commit -m "docs: explain Codex plugin install"
