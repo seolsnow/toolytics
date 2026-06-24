@@ -58,35 +58,27 @@ Once installed, a SessionStart hook self-installs the daily collector daemon
 (macOS launchd / Linux systemd·cron), which gathers data before transcript
 cleanup (default 30 days) so past history is preserved.
 
-## Day-to-day use — no permission prompts
+## Permissions — two one-time approvals, then silent
 
-Claude Code gates any plugin that shells out: it will ask before running a
-command, and ask once to trust a plugin's hooks. toolytics needs both (it's a
-scanner + a daemon), so a fresh install hits two prompts. **You don't have to
-live with them** — the daemon sidesteps both:
+Every user gets the same flow. Claude Code gates plugins that shell out, so on a
+fresh install you approve two things **once** — after that toolytics never asks
+again:
 
-- **The daemon runs outside Claude Code.** Once installed, the OS scheduler
-  runs `build.sh` daily on its own — no Claude, no permission prompt ever. It
-  rebuilds `~/.toolytics/dashboard.html` every day.
-- **Viewing needs no command.** Just open the file the daemon already built —
-  bookmark `file://$HOME/.toolytics/dashboard.html`. No Claude involved, so no
-  gate. This is the normal daily path.
-- **`/toolytics` is only for an on-demand rebuild** (when you want *right now*,
-  not yesterday's). That's the one path that runs bash through Claude. To make
-  it silent, click **"Yes, always allow"** on the first prompt, or add this to
-  `~/.claude/settings.json` once:
-  ```json
-  "permissions": { "allow": ["Bash(bash *toolytics*build.sh*)"] }
-  ```
-- **The hook-trust prompt is one-time and safe to decline.** It only registers
-  the daemon. If you decline (or want zero hooks), install the daemon yourself
-  from a terminal — no Claude gate at all. From a clone of this repo:
-  ```sh
-  bash install-daemon.sh install
-  ```
-  (plugin-only install? the script lives at
-  `~/.claude/plugins/cache/toolytics/toolytics/*/install-daemon.sh`.)
-  Either way the daemon takes over and the prompts never come back.
+1. **Trust the plugin's hook** (at install). It only registers the daily
+   collector daemon. One click.
+2. **Allow the build** (first `/toolytics`). When Claude asks to run the build,
+   choose **"Yes, and don't ask again"**. It's safe — the script just scans your
+   local transcripts and writes to `~/.toolytics`. After that `/toolytics` runs
+   silently forever.
+
+That's the whole setup. Prefer not to wait on a rebuild? The daemon already
+builds `~/.toolytics/dashboard.html` daily — bookmark
+`file://$HOME/.toolytics/dashboard.html` to open the latest instantly.
+
+Rather pre-authorize than click? Add this once to `~/.claude/settings.json`:
+```json
+"permissions": { "allow": ["Bash(bash *toolytics*build.sh*)"] }
+```
 
 ## Environment variables
 - `TOOLYTICS_HOME` — output directory (default `~/.toolytics`)

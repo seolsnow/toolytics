@@ -49,18 +49,22 @@ filterable dashboard. (All projects combined, last N days.)
   autonomously, independent of Claude Code. macOS is live-verified (exit 0); the
   **Linux branch is a standard pattern but unverified on this machine**. Log:
   `~/.toolytics/scheduler.log`.
-- **Permission gates & the daemon as the bypass**: Claude Code gates plugins that
-  shell out — a Bash-tool prompt for `/toolytics` (matched on the command string,
-  not the caller; can't be auto-granted — the harness blocks even programmatic
-  allowlisting), and a one-time hook-trust prompt for the SessionStart hook. The
-  daemon makes both irrelevant for normal use: once installed it runs `build.sh`
-  via the OS scheduler **outside Claude Code** (no prompt ever) and rebuilds
-  `dashboard.html` daily, so the everyday path is "open the static file" — zero
-  Claude involvement. `/toolytics` (gated bash) is only an on-demand rebuild;
-  document the one-time `Bash(bash *toolytics*build.sh*)` allowlist for those who
-  want it silent. The hook is decline-safe (`|| true`, fail-open) with a manual
-  `install-daemon.sh install` fallback. So the gates are surfaced-and-bypassed by
-  design, not hacked around.
+- **Permission gates & the chosen UX (uniform, two one-time approvals)**: Claude
+  Code gates plugins that shell out — a Bash-tool prompt for `/toolytics` (matched
+  on the command string, not the caller; **can't be auto-granted** — the harness
+  blocks even programmatic allowlisting, so the plugin cannot silently permit
+  itself), and a one-time hook-trust prompt for the SessionStart hook. Decision:
+  **don't try to dodge the gates per-user (no "run bash yourself in a terminal"
+  path) — keep one uniform plugin experience and frame the approvals as expected
+  setup.** So every user does the same two one-time clicks: (1) trust the hook at
+  install, (2) "Yes, and don't ask again" on the first `/toolytics`. After that
+  it's silent forever. The first-run always-allow nudge is baked into
+  `commands/toolytics.md` (mention once per conversation, never if it ran without
+  a prompt). The daemon still runs `build.sh` via the OS scheduler **outside
+  Claude Code** (no gate) and rebuilds `dashboard.html` daily, so a bookmark of
+  the static file is the no-wait alternative — but it's a bonus, not the
+  onboarding path. Power users can pre-authorize `Bash(bash *toolytics*build.sh*)`
+  in settings instead of clicking. Hook stays decline-safe (`|| true`, fail-open).
 - **Rescan time**: full cold scan ~3s (currently ~1700 files). Per the ponytail
   comment, switch to mtime-incremental if it gets slow.
 - **Skill roster**: disk inventory (`~/.claude/skills` + `plugins`) ∪ every skill
