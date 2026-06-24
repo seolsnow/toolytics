@@ -49,22 +49,20 @@ filterable dashboard. (All projects combined, last N days.)
   autonomously, independent of Claude Code. macOS is live-verified (exit 0); the
   **Linux branch is a standard pattern but unverified on this machine**. Log:
   `~/.toolytics/scheduler.log`.
-- **Permission gates & the chosen UX (uniform, two one-time approvals)**: Claude
-  Code gates plugins that shell out — a Bash-tool prompt for `/toolytics` (matched
-  on the command string, not the caller; **can't be auto-granted** — the harness
-  blocks even programmatic allowlisting, so the plugin cannot silently permit
-  itself), and a one-time hook-trust prompt for the SessionStart hook. Decision:
-  **don't try to dodge the gates per-user (no "run bash yourself in a terminal"
-  path) — keep one uniform plugin experience and frame the approvals as expected
-  setup.** So every user does the same two one-time clicks: (1) trust the hook at
-  install, (2) "Yes, and don't ask again" on the first `/toolytics`. After that
-  it's silent forever. The first-run always-allow nudge is baked into
-  `commands/toolytics.md` (mention once per conversation, never if it ran without
-  a prompt). The daemon still runs `build.sh` via the OS scheduler **outside
-  Claude Code** (no gate) and rebuilds `dashboard.html` daily, so a bookmark of
-  the static file is the no-wait alternative — but it's a bonus, not the
-  onboarding path. Power users can pre-authorize `Bash(bash *toolytics*build.sh*)`
-  in settings instead of clicking. Hook stays decline-safe (`|| true`, fail-open).
+- **Permission prompts & expected UX (configuration-dependent)**: toolytics does
+  not alter Claude Code permissions or try to grant itself access. The
+  SessionStart hook and the `/toolytics` Bash command can be approved or
+  prompted independently by the user's client configuration. In particular,
+  `permissions.defaultMode: "auto"` can run the build without a Bash prompt;
+  it does not imply hook trust. When Claude Code does show a prompt, explain
+  the local-only behavior and recommend the persisted one-time approval
+  (`"Yes, and don't ask again"`). `commands/toolytics.md` mentions that option
+  once per conversation only when a prompt actually occurred. The hook stays
+  decline-safe (`|| true`, fail-open). The daily OS scheduler runs outside
+  Claude Code after it is registered and rebuilds `dashboard.html` daily; a
+  bookmark of the static file is a no-wait alternative, not a separate
+  onboarding path. Power users can pre-authorize
+  `Bash(bash *toolytics*build.sh*)` in settings.
 - **Rescan time**: full cold scan ~3s (currently ~1700 files). Per the ponytail
   comment, switch to mtime-incremental if it gets slow.
 - **Skill roster**: disk inventory (`~/.claude/skills` + `plugins`) ∪ every skill

@@ -59,22 +59,26 @@ Once installed, a SessionStart hook self-installs the daily collector daemon
 (macOS launchd / Linux systemd·cron), which gathers data before transcript
 cleanup (default 30 days) so past history is preserved.
 
-## Permissions — two one-time approvals, then silent
+## Permissions — prompts depend on your Claude Code configuration
 
-Every user gets the same flow. Claude Code gates plugins that shell out, so on a
-fresh install you approve two things **once** — after that toolytics never asks
-again:
+`/toolytics` runs a local Bash script, and the plugin has a SessionStart hook
+that registers the daily collector. Claude Code may ask for one-time approval
+of either action, depending on your client and permission settings:
 
-1. **Trust the plugin's hook** (at install). It only registers the daily
-   collector daemon. One click.
-2. **Allow the build** (first `/toolytics`). When Claude asks to run the build,
-   choose **"Yes, and don't ask again"**. It's safe — the script just scans your
-   local transcripts and writes to `~/.toolytics`. After that `/toolytics` runs
-   silently forever.
+1. **Trust the plugin hook**, if Claude Code asks. The hook only ensures the
+   per-user daily collector is registered.
+2. **Allow the build**, if `/toolytics` prompts before running Bash. Choose
+   **"Yes, and don't ask again"** to persist that approval. The script only
+   reads local transcripts and writes to `~/.toolytics`.
 
-That's the whole setup. Prefer not to wait on a rebuild? The daemon already
-builds `~/.toolytics/dashboard.html` daily — bookmark
-`file://$HOME/.toolytics/dashboard.html` to open the latest instantly.
+A configuration such as `"permissions": { "defaultMode": "auto" }` can
+allow the build without showing the Bash prompt. Hook trust is controlled
+separately, so do not infer one prompt from the presence or absence of the
+other.
+
+The daily collector runs outside Claude Code after registration. It rebuilds
+`~/.toolytics/dashboard.html` daily, so bookmarking
+`file://$HOME/.toolytics/dashboard.html` opens the latest completed build.
 
 Rather pre-authorize than click? Add this once to `~/.claude/settings.json`:
 ```json
