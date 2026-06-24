@@ -30,8 +30,9 @@ and skill-inventory data currently come from Claude Code only.
 It also **outlives log cleanup.** Claude Code deletes transcripts after
 ~30 days; toolytics keeps a cumulative CSV and (optionally) runs a daily
 background daemon so your history keeps growing even after the raw logs are gone.
-Installing as a Claude Code plugin registers that daemon for you; a standalone
-or Codex setup registers it by running `./install-daemon.sh` once (see below).
+Installing as either the Claude Code or Codex plugin registers that daemon for
+you; a standalone setup registers it by running `./install-daemon.sh` once
+(see below).
 
 ## Quick start
 ```sh
@@ -52,9 +53,22 @@ Clone the repo and run the build; it collects every runtime it finds on disk:
 ./build.sh               # scan → update cumulative DBs → build dashboard → open browser
 ./install-daemon.sh      # (optional) register the daily collector so history survives log cleanup
 ```
-This is the path **Codex needs**: Codex has no Claude-style plugin/SessionStart
-hook, so the daily collector is registered by running `install-daemon.sh`
-yourself (once). It is idempotent — re-running just refreshes the registration.
+`install-daemon.sh` is idempotent — re-running just refreshes the registration.
+
+### As a Codex plugin (auto-registers the daemon)
+
+From a local clone, register the repository marketplace and install the plugin:
+
+```sh
+codex plugin marketplace add .
+codex plugin add toolytics@toolytics
+```
+
+For GitHub, replace `.` with `seolsnow/toolytics`. Start a new Codex thread,
+run `/hooks`, and trust the `toolytics` SessionStart hook. The hook calls
+`install-daemon.sh ensure`, so the daily collector registers or repairs itself
+before dashboard use. Then ask Codex to open the toolytics dashboard or invoke
+`$toolytics`.
 
 ### As a Claude Code plugin (auto-registers the daemon)
 This repo is itself the plugin **and** the marketplace (`marketplace.json` with
@@ -73,9 +87,9 @@ claude plugin install toolytics@toolytics --scope user
 Once installed, a SessionStart hook self-installs the daily collector daemon
 (macOS launchd / Linux systemd·cron), which gathers data before transcript
 cleanup (default 30 days) so past history is preserved. This auto-registration
-is Claude-Code-only; Codex users use the standalone step above.
+also applies to the Codex plugin above.
 
-## Permissions — prompts depend on your Claude Code configuration
+## Permissions — prompts depend on your client configuration
 
 `/toolytics` runs a local Bash script, and the plugin has a SessionStart hook
 that registers the daily collector. Claude Code may ask for one-time approval
@@ -91,6 +105,9 @@ A configuration such as `"permissions": { "defaultMode": "auto" }` can
 allow the build without showing the Bash prompt. Hook trust is controlled
 separately, so do not infer one prompt from the presence or absence of the
 other.
+
+In Codex, review and trust the `toolytics` hook through `/hooks`. That trust is
+separate from normal Bash-command approvals.
 
 The daily collector runs outside Claude Code after registration. It rebuilds
 `~/.toolytics/dashboard.html` daily, so bookmarking

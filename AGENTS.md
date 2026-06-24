@@ -44,14 +44,15 @@ filterable dashboard. (All projects combined, last N days.)
   all derived from `$HOME` · `command -v python3` · the script's own location
   (zero hardcoded strings, same self-configuring philosophy as inject
   attribution). It's idempotent, so rerunning = bootout→bootstrap refresh; the
-  `ensure` subcommand is a no-op if already installed (self-heal). The plugin
-  calls this from a SessionStart hook via `install-daemon.sh ensure` → registered
-  once on the first session after install, after which the daemon runs
-  autonomously, independent of Claude Code. **This auto-registration is
-  Claude-Code-only**: Codex has no plugin/SessionStart-hook mechanism, so a Codex
-  or standalone (cloned-repo) user registers the daily collector by running
-  `install-daemon.sh` themselves (once; idempotent). Data *collection* needs no
-  install — `build.sh` scans both transcript roots regardless of how it was
+  `ensure` subcommand is a no-op if already installed (self-heal). The Claude
+  Code and Codex plugins call this from a trusted SessionStart hook via
+  `install-daemon.sh ensure` → registered once on the first session after
+  install, after which the daemon runs autonomously. Codex discovers the shared
+  root-level `hooks/hooks.json` and supplies `CLAUDE_PLUGIN_ROOT` compatibility;
+  the hook definition therefore stays identical across runtimes. A standalone
+  (cloned-repo) user registers the daily collector by running
+  `install-daemon.sh` themselves once; it is idempotent. Data *collection* needs
+  no install — `build.sh` scans both transcript roots regardless of how it was
   invoked. macOS is live-verified (exit 0); the Linux systemd `--user` timer
   path is verified on WSL2. **All three backends write run output to
   `~/.toolytics/scheduler.log`**: launchd via `StandardOutPath`/`StandardErrorPath`,
@@ -61,7 +62,9 @@ filterable dashboard. (All projects combined, last N days.)
 - **Permission prompts & expected UX (configuration-dependent)**: toolytics does
   not alter Claude Code permissions or try to grant itself access. The
   SessionStart hook and the `/toolytics` Bash command can be approved or
-  prompted independently by the user's client configuration. In particular,
+  prompted independently by the user's client configuration. Codex hook trust
+  is reviewed through `/hooks` and is distinct from normal Bash-command
+  approvals. In particular,
   `permissions.defaultMode: "auto"` can run the build without a Bash prompt;
   it does not imply hook trust. When Claude Code does show a prompt, explain
   the local-only behavior and recommend the persisted one-time approval
@@ -160,9 +163,12 @@ filterable dashboard. (All projects combined, last N days.)
 - `.claude-plugin/marketplace.json` — marketplace for local install (this repo is
   itself the plugin, `source: "./"`). Install:
   `/plugin marketplace add <repo-path>` → `toolytics@toolytics`.
-- `hooks/hooks.json` — SessionStart self-install guard (calls `install-daemon.sh
-  ensure` → auto-registers the daemon). **Claude Code only** — Codex/standalone
-  users run `install-daemon.sh` directly.
+- `.codex-plugin/plugin.json` — Codex plugin manifest.
+- `.agents/plugins/marketplace.json` — repository-scoped Codex marketplace;
+  its `./` local source is this repository's plugin root.
+- `skills/toolytics/SKILL.md` — Codex dashboard workflow.
+- `hooks/hooks.json` — shared Claude Code and Codex SessionStart self-install
+  guard. Codex requires explicit hook trust through `/hooks`.
 - (generated, `~/.toolytics/`) `history.csv` — tool cumulative DB
   (date,runtime,triggered_by,project,tool,count)
 - (generated, `~/.toolytics/`) `tokens.csv` — token cumulative DB
