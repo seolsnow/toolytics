@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/install-daemon.sh\" ensure >/dev/null 2>&1 || true",
+            "statusMessage": "Ensuring cc-usage daily collector..."
+          }
+        ]
+      }
+    ]
+  }
+}
