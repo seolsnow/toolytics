@@ -77,6 +77,10 @@
   .total .n{font-family:var(--mono);font-size:clamp(44px,9vw,86px);font-weight:700;
     letter-spacing:-.04em;color:var(--text);line-height:.9;font-variant-numeric:tabular-nums}
   .total .lab{font-family:var(--mono);font-size:12.5px;letter-spacing:.13em;color:var(--muted);max-width:260px}
+  .spend-summary{display:flex;gap:32px;flex-wrap:wrap;margin:18px 0 22px}
+  .spend-summary>div{display:flex;align-items:baseline;gap:9px}
+  .spend-number{font-family:var(--mono);font-size:26px;font-weight:700;font-variant-numeric:tabular-nums}
+  .spend-label{font-family:var(--mono);font-size:11px;letter-spacing:.08em;color:var(--muted)}
   .thesis{font-size:16px;color:var(--muted);max-width:64ch;margin:16px 0 26px}
   .thesis b{color:var(--text);font-weight:700}
   .thesis .pop{color:var(--hot);font-weight:700;font-family:var(--mono)}
@@ -177,6 +181,17 @@
     </div>
   </header>
 
+  <section id="s-spend">
+    <div class="shead"><h2>Tokens &amp; API value</h2><span class="meta" id="m-spend"></span></div>
+    <p class="snote">Estimated list value from transcript token usage and the local price table. This is not a bill.</p>
+    <div class="spend-summary">
+      <div><span class="spend-number" id="spend-tokens">0</span><span class="spend-label">tokens</span></div>
+      <div><span class="spend-number" id="spend-cost">~$0.00</span><span class="spend-label">estimated API value</span></div>
+    </div>
+    <div class="rows" id="r-spend"></div>
+    <div class="pager" id="pg-spend"></div>
+  </section>
+
   <section id="s-skills">
     <div class="shead"><h2>Skills</h2><span class="meta" id="m-skills"></span>
       <div class="seg sk-seg" id="sk-origin">
@@ -233,6 +248,12 @@ const $=s=>document.querySelector(s);
 const fmt=n=>n.toLocaleString('en-US');
 // ROWS: [date, triggered_by, project, tool, count]
 const ROWS=DATA.rows;
+const TOKENS=DATA.tokens||[];
+const PRICE=DATA.price||{};
+const usd=n=>'~$'+n.toLocaleString('en-US',{
+  minimumFractionDigits:n<10?2:0,
+  maximumFractionDigits:n<10?2:0
+});
 const COL={date:0,by:1,proj:2,tool:3,n:4};
 
 const PROJECTS=[...new Set(ROWS.map(r=>r[2]))].sort();
@@ -255,7 +276,7 @@ const MIN=allDates[0]||DATA.default_from, MAX=allDates[allDates.length-1]||DATA.
 const DEF_FROM=(DATA.default_from && DATA.default_from>MIN)?DATA.default_from:MIN;
 
 const S={by:'all',projs:new Set(PROJECTS),from:DEF_FROM,to:MAX,q:'',skOrigin:'all',
-  page:{tools:0,skills:0,'unused-skills':0,mcp:0,proj:0},_sig:''};
+  page:{tools:0,skills:0,'unused-skills':0,spend:0,mcp:0,proj:0},_sig:''};
 const PAGE=20;
 // transcript-derived strings (project, tool, mcp method, skill/inject label) are
 // interpolated into innerHTML — escape so an odd name can't break layout or inject markup.
@@ -296,13 +317,38 @@ $('#f-reset').addEventListener('click',()=>{
   $('#f-from').value=DEF_FROM;$('#f-to').value=MAX;$('#f-q').value='';
   document.querySelectorAll('#f-by button').forEach(x=>x.setAttribute('aria-pressed',x.dataset.v==='all'));
   document.querySelectorAll('#sk-origin button').forEach(x=>x.setAttribute('aria-pressed',x.dataset.v==='all'));
-  S.page={tools:0,skills:0,'unused-skills':0,mcp:0,proj:0};
+  S.page={tools:0,skills:0,'unused-skills':0,spend:0,mcp:0,proj:0};
   syncProjs();});
 
 // ---- aggregation ----
 const allProj=()=>S.projs.size===PROJECTS.length;
 function pass(r){return (S.by==='all'||r[1]===S.by) &&
   (allProj()||S.projs.has(r[2])) && r[0]>=S.from && r[0]<=S.to;}
+// token totals + estimated list value, reusing pass() (cols 0-2 mean the same in
+// DATA.tokens). cache multipliers mirror build.sh: read 0.1x, write 5m 1.25x, 1h 2x.
+function tokenSummary(){
+  const models=new Map();
+  let tokens=0,cost=0,unpriced=0;
+  TOKENS.filter(pass).forEach(r=>{
+    const name=r[3];
+    const input=Number(r[4])||0,output=Number(r[5])||0,cacheRead=Number(r[6])||0,
+          cw5m=Number(r[7])||0,cw1h=Number(r[8])||0;
+    const total=input+output+cacheRead+cw5m+cw1h;
+    const price=PRICE[name];
+    const value=price
+      ? (input*price[0]+output*price[1]+cacheRead*price[0]*0.1
+        +cw5m*price[0]*1.25+cw1h*price[0]*2)/1e6
+      : 0;
+    const cur=models.get(name)||{tokens:0,cost:0,unpriced:0};
+    cur.tokens+=total; cur.cost+=value; cur.unpriced+=price?0:total;
+    models.set(name,cur);
+    tokens+=total; cost+=value; unpriced+=price?0:total;
+  });
+  const rows=[...models.entries()]
+    .sort((a,b)=>b[1].tokens-a[1].tokens || b[1].cost-a[1].cost)
+    .map(([name,v])=>[name,v.tokens,{detail:usd(v.cost)}]);
+  return {tokens,cost,unpriced,rows};
+}
 function rollup(rows,keyfn){const m=new Map();
   rows.forEach(r=>{const k=keyfn(r);if(k==null)return;m.set(k,(m.get(k)||0)+r[4]);});
   return [...m.entries()].sort((a,b)=>b[1]-a[1]);}
@@ -341,7 +387,11 @@ function render(sel,pairs,total,opts){
     }
     const t=(m.heat!=null)?m.heat:Math.min(1,Math.max(0,(lmax-Math.log(val+1))/((lmax-lmin)||1)));
     const w=(m.w!=null)?m.w:Math.max(1.5,max?(val/max)*100:1.5);
-    const pct=opts.pct?`<span class="pct">${total?(val/total*100).toFixed(1):'0.0'}%</span>`:'';
+    const detail=m.detail
+      ? `<span class="pct">${m.detail}</span>`
+      : opts.pct
+        ? `<span class="pct">${total?(val/total*100).toFixed(1):'0.0'}%</span>`
+        : '';
     let disp=en;
     if(opts.mcp){const p=name.replace('mcp__','').split('__');
       disp=`<span class="ns">${esc(p.slice(0,-1).join('·'))}·</span>${esc(p[p.length-1])}`;}
@@ -349,7 +399,7 @@ function render(sel,pairs,total,opts){
     return `<div class="row"><span class="rk">${rk}</span>`+
       `<span class="nm" title="${en}">${disp}</span>`+
       `<span class="track"><span class="fill" data-w="${w}" style="background:${heat(t)}"></span></span>`+
-      `<span class="ct">${fmt(val)}${pct}</span></div>`;
+      `<span class="ct">${fmt(val)}${detail}</span></div>`;
   };
   let html;
   if(!slice.length && !pinned.length){
@@ -402,9 +452,10 @@ let curDays=[];
 let firstPaint=true;   // bars fill-animate once on load; re-renders (paging/filter) set instantly
 function paint(){
   const sig=`${S.by}|${[...S.projs].sort().join(',')}|${S.from}|${S.to}|${S.q}|${S.skOrigin}`;
-  if(sig!==S._sig){S._sig=sig; S.page={tools:0,skills:0,'unused-skills':0,mcp:0,proj:0};}
+  if(sig!==S._sig){S._sig=sig; S.page={tools:0,skills:0,'unused-skills':0,spend:0,mcp:0,proj:0};}
   const rows=ROWS.filter(pass);
   const total=rows.reduce((a,r)=>a+r[4],0);
+  const spend=tokenSummary();
   const tools=rollup(rows,r=>display(r[3]));
 
   // counts from filtered window, mapped over the stable roster (0-use still shows)
@@ -461,6 +512,10 @@ function paint(){
           ? `, and <b>${(agentN/total*100).toFixed(0)}% ran inside subagents &amp; workflows</b> you dispatched.`
           : '.');
 
+  $('#spend-tokens').textContent=fmt(spend.tokens);
+  $('#spend-cost').textContent=usd(spend.cost);
+  $('#m-spend').textContent=spend.rows.length+' models'+(spend.unpriced?' · '+fmt(spend.unpriced)+' unpriced tokens':'');
+  render('#r-spend',spend.rows,spend.tokens,{key:'spend'});
   render('#r-tools',tools,total,{pct:true,key:'tools'});
   render('#r-skills',counted,total,{skill:true,key:'skills',pinned:skPinned});
   render('#r-unused-skills',unused,total,{skill:true,key:'unused-skills'});

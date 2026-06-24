@@ -15,9 +15,9 @@ questions you otherwise can't:
   session from calls your subagents/workflows made for you. The delegated
   layer is usually **~2/3 of all calls** (mostly Read/WebFetch/WebSearch from
   research agents) — invisible if you only eyeball your own session.
-- **What am I spending?** Per-model token totals and an estimated API value are
-  aggregated to `tokens.csv` and echoed by `build.sh` (the dashboard itself shows
-  usage, not cost — query the CSV for the breakdown).
+- **What am I spending?** A **Tokens & API value** section shows per-model token
+  totals and an estimated API list value (also in `tokens.csv` + `build.sh`
+  output). It's an estimate from list prices, not a bill.
 - **Which skills auto-fire?** Real counts of SessionStart hook injections
   (the skills/guidance silently prepended to your sessions), so you can see
   what's actually running vs. just installed.
