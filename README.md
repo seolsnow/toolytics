@@ -12,9 +12,17 @@ Claude Code 세션 트랜스크립트(`~/.claude/projects/**/*.jsonl`)에서 스
 출력: `~/.toolytics/` (`TOOLYTICS_HOME`으로 변경). `history.csv`/`tokens.csv`/`injects.csv`(누적 DB) + `dashboard.html`.
 
 ## 플러그인으로 설치
+이 레포 자체가 플러그인 + 마켓플레이스(`marketplace.json`의 `source: "./"`)다.
+
+Claude Code 안에서 (대화형):
 ```
-/plugin marketplace add <레포경로>
+/plugin marketplace add seolsnow/toolytics    # 또는 로컬 클론 경로
 /plugin install toolytics@toolytics
+```
+터미널에서 (비대화형):
+```sh
+claude plugin marketplace add seolsnow/toolytics
+claude plugin install toolytics@toolytics --scope user
 ```
 설치하면 `/toolytics`로 대시보드 빌드, SessionStart 훅이 매일 자동 수집 데몬을 self-install
 (macOS launchd / Linux systemd·cron). 트랜스크립트 cleanup(기본 30일) 전에 모아둬 과거 집계를 지킨다.
