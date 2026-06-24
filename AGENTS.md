@@ -89,8 +89,8 @@ filterable dashboard. (All projects combined, last N days.)
   `build.sh` (as of 2026-06) — when Anthropic changes prices, fix the one line
   there** (a ponytail calibration knob). Unregistered models (`<synthetic>`, etc.)
   cost 0 but their tokens still show. `build.sh` echoes the estimated total API
-  value after accumulating. (The dashboard Spend section was removed — token
-  collection · `tokens.csv` · cost aggregation are kept.)
+  value after accumulating. The dashboard's **Tokens & API value** section
+  (`#s-spend`) renders this last, at the very bottom below Tools.
 - **Auto-injection, measured** (`DATA.injects`; Claude Code only): counts only transcript
   `attachment.type=hook_success` + `hookEvent=SessionStart` (superpowers also
   emits a duplicate `hook_additional_context`, which is skipped → one row per
@@ -142,6 +142,17 @@ filterable dashboard. (All projects combined, last N days.)
 - **Remaining unfixed (low-impact, deliberately deferred)**: skill leaf-basename
   collision (same-named user/plugin counts get merged) — rare and fiddly to fix
   well, so deferred.
+- **TODO — project-scoped skill visibility (Skills section)**: `SKILL_UNIVERSE` is
+  global and the disk inventory only scans `~/.claude/skills` + `plugins`, never a
+  project-local `.claude/skills`. Two wanted behaviors not yet met:
+  1. A skill should show **even if never used** (zero-count) — today a
+     project-scoped skill only enters the universe if it was invoked at least once
+     (the inventory scan misses project-local dirs).
+  2. A skill scoped to *another* project should **not** show when you filter to a
+     different project — today the universe is project-agnostic, so a skill used
+     only in project A still appears (count 0, "unused" section) under project B.
+  Fix shape: scan project-local `.claude/skills` into `skill_inv` tagged with their
+  owning project, and project-filter the skill universe (not just the counts).
 - **Dashboard UI**: 20-per-page pagination on every section (pad to 20 rows only
   when multi-page); pinned rows (Skills' inject pins + divider) render above the
   slice and **don't count toward the page budget**, so page 1 shows a full 20
