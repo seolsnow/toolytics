@@ -47,7 +47,12 @@ filterable dashboard. (All projects combined, last N days.)
   `ensure` subcommand is a no-op if already installed (self-heal). The plugin
   calls this from a SessionStart hook via `install-daemon.sh ensure` → registered
   once on the first session after install, after which the daemon runs
-  autonomously, independent of Claude Code. macOS is live-verified (exit 0); the
+  autonomously, independent of Claude Code. **This auto-registration is
+  Claude-Code-only**: Codex has no plugin/SessionStart-hook mechanism, so a Codex
+  or standalone (cloned-repo) user registers the daily collector by running
+  `install-daemon.sh` themselves (once; idempotent). Data *collection* needs no
+  install — `build.sh` scans both transcript roots regardless of how it was
+  invoked. macOS is live-verified (exit 0); the
   **Linux branch is a standard pattern but unverified on this machine**. Log:
   `~/.toolytics/scheduler.log`.
 - **Permission prompts & expected UX (configuration-dependent)**: toolytics does
@@ -153,7 +158,8 @@ filterable dashboard. (All projects combined, last N days.)
   itself the plugin, `source: "./"`). Install:
   `/plugin marketplace add <repo-path>` → `toolytics@toolytics`.
 - `hooks/hooks.json` — SessionStart self-install guard (calls `install-daemon.sh
-  ensure` → auto-registers the daemon).
+  ensure` → auto-registers the daemon). **Claude Code only** — Codex/standalone
+  users run `install-daemon.sh` directly.
 - (generated, `~/.toolytics/`) `history.csv` — tool cumulative DB
   (date,runtime,triggered_by,project,tool,count)
 - (generated, `~/.toolytics/`) `tokens.csv` — token cumulative DB

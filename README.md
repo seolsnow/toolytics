@@ -28,8 +28,10 @@ the data inlined, so you can open or share it offline. Token, cost, injection,
 and skill-inventory data currently come from Claude Code only.
 
 It also **outlives log cleanup.** Claude Code deletes transcripts after
-~30 days; toolytics keeps a cumulative CSV and (optionally) installs a daily
+~30 days; toolytics keeps a cumulative CSV and (optionally) runs a daily
 background daemon so your history keeps growing even after the raw logs are gone.
+Installing as a Claude Code plugin registers that daemon for you; a standalone
+or Codex setup registers it by running `./install-daemon.sh` once (see below).
 
 ## Quick start
 ```sh
@@ -40,7 +42,21 @@ background daemon so your history keeps growing even after the raw logs are gone
 Output goes to `~/.toolytics/` (override with `TOOLYTICS_HOME`):
 `history.csv` / `tokens.csv` / `injects.csv` (cumulative DBs) + `dashboard.html`.
 
-## Install as a plugin
+## Install
+toolytics scans both `~/.claude/projects` and `~/.codex/sessions`, so one install
+covers Claude Code, Codex, or both. Pick the path that fits your setup.
+
+### Standalone (any runtime — Claude Code, Codex, or both)
+Clone the repo and run the build; it collects every runtime it finds on disk:
+```sh
+./build.sh               # scan → update cumulative DBs → build dashboard → open browser
+./install-daemon.sh      # (optional) register the daily collector so history survives log cleanup
+```
+This is the path **Codex needs**: Codex has no Claude-style plugin/SessionStart
+hook, so the daily collector is registered by running `install-daemon.sh`
+yourself (once). It is idempotent — re-running just refreshes the registration.
+
+### As a Claude Code plugin (auto-registers the daemon)
 This repo is itself the plugin **and** the marketplace (`marketplace.json` with
 `source: "./"`).
 
@@ -56,7 +72,8 @@ claude plugin install toolytics@toolytics --scope user
 ```
 Once installed, a SessionStart hook self-installs the daily collector daemon
 (macOS launchd / Linux systemd·cron), which gathers data before transcript
-cleanup (default 30 days) so past history is preserved.
+cleanup (default 30 days) so past history is preserved. This auto-registration
+is Claude-Code-only; Codex users use the standalone step above.
 
 ## Permissions — prompts depend on your Claude Code configuration
 
