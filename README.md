@@ -1,35 +1,67 @@
 # toolytics
 
-Claude Code 세션 트랜스크립트(`~/.claude/projects/**/*.jsonl`)에서 스킬·툴·토큰 사용량을 집계해
-필터 가능한 self-contained 대시보드로 보여준다. 모든 프로젝트 통합, main 직접호출 vs 위임(agent) 구분.
+A self-contained dashboard for **your own Claude Code usage** — which skills,
+tools, and MCP methods you actually reach for, how often, and what they cost.
 
-## 빠른 시작
+## What it does (and why you'd want it)
+
+Claude Code logs every session to `~/.claude/projects/**/*.jsonl`, but never
+shows you the aggregate. toolytics reads those transcripts and answers
+questions you otherwise can't:
+
+- **What do I actually use?** Every tool, `skill:<name>` invocation, and
+  `mcp__server__method` call, ranked by count across *all* your projects.
+- **Direct vs. delegated.** It splits calls you made yourself in the main
+  session from calls your subagents/workflows made for you. The delegated
+  layer is usually **~2/3 of all calls** (mostly Read/WebFetch/WebSearch from
+  research agents) — invisible if you only eyeball your own session.
+- **What am I spending?** Per-model token totals and an estimated API value,
+  from the `message.usage` records in the logs.
+- **Which skills auto-fire?** Real counts of SessionStart hook injections
+  (the skills/guidance silently prepended to your sessions), so you can see
+  what's actually running vs. just installed.
+- **Skills you never use.** The roster includes every installed skill, so
+  zero-count ones still show up.
+
+Everything is filterable in the browser (by direct/delegated, project, date
+range, tool search) — the dashboard is one self-contained HTML file with the
+data inlined, so you can open or share it offline.
+
+It also **outlives log cleanup.** Claude Code deletes transcripts after
+~30 days; toolytics keeps a cumulative CSV and (optionally) installs a daily
+background daemon so your history keeps growing even after the raw logs are gone.
+
+## Quick start
 ```sh
-./build.sh               # 전체 스캔 → 누적 DB 갱신 → 대시보드 빌드 → 브라우저 오픈
-./build.sh 7             # 기본 뷰를 최근 7일로 (데이터엔 전 기간 보존)
-./build.sh --selfcheck   # 누적 병합·attribution 로직 회귀 가드
+./build.sh               # scan everything → update cumulative DBs → build dashboard → open browser
+./build.sh 7             # default view to last 7 days (full history is still kept)
+./build.sh --selfcheck   # regression guard for the merge & attribution logic
 ```
-출력: `~/.toolytics/` (`TOOLYTICS_HOME`으로 변경). `history.csv`/`tokens.csv`/`injects.csv`(누적 DB) + `dashboard.html`.
+Output goes to `~/.toolytics/` (override with `TOOLYTICS_HOME`):
+`history.csv` / `tokens.csv` / `injects.csv` (cumulative DBs) + `dashboard.html`.
 
-## 플러그인으로 설치
-이 레포 자체가 플러그인 + 마켓플레이스(`marketplace.json`의 `source: "./"`)다.
+## Install as a plugin
+This repo is itself the plugin **and** the marketplace (`marketplace.json` with
+`source: "./"`).
 
-Claude Code 안에서 (대화형):
+Inside Claude Code (interactive):
 ```
-/plugin marketplace add seolsnow/toolytics    # 또는 로컬 클론 경로
+/plugin marketplace add seolsnow/toolytics    # or a local clone path
 /plugin install toolytics@toolytics
 ```
-터미널에서 (비대화형):
+From a terminal (non-interactive):
 ```sh
 claude plugin marketplace add seolsnow/toolytics
 claude plugin install toolytics@toolytics --scope user
 ```
-설치하면 `/toolytics`로 대시보드 빌드, SessionStart 훅이 매일 자동 수집 데몬을 self-install
-(macOS launchd / Linux systemd·cron). 트랜스크립트 cleanup(기본 30일) 전에 모아둬 과거 집계를 지킨다.
+Once installed, `/toolytics` builds the dashboard, and a SessionStart hook
+self-installs the daily collector daemon (macOS launchd / Linux systemd·cron).
+It gathers data before transcript cleanup (default 30 days) so past history is
+preserved.
 
-## 환경변수
-- `TOOLYTICS_HOME` — 출력 디렉터리 (기본 `~/.toolytics`)
-- `TOOLYTICS_OPEN=0` — 브라우저 자동 오픈 스킵
-- `TOOLYTICS_TRIM="a,b"` — 프로젝트 라벨에서 선두 경로 세그먼트 제거 (장식용)
+## Environment variables
+- `TOOLYTICS_HOME` — output directory (default `~/.toolytics`)
+- `TOOLYTICS_OPEN=0` — skip auto-opening the browser
+- `TOOLYTICS_TRIM="a,b"` — strip leading path segments from project labels (cosmetic)
 
-자세한 설계·근거는 [AGENTS.md](AGENTS.md).
+For the design and rationale, see [AGENTS.md](AGENTS.md).

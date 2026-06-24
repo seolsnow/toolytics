@@ -1,6 +1,6 @@
 {
   "name": "toolytics",
-  "description": "Claude Code 스킬·툴·토큰 사용량 대시보드 + 트랜스크립트 cleanup 전에 매일 자동 수집하는 데몬",
+  "description": "Dashboard of your Claude Code skill/tool/token usage + a daemon that collects daily before transcript cleanup",
   "version": "0.1.0",
   "author": { "name": "seolsnow" },
   "license": "MIT"
