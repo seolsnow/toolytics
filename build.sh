@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Claude Code toolytics tracker.
-# Scans ~/.claude/projects/**/*.jsonl, accumulates tidy tables
-#   tools:   (date, triggered_by, project, tool, count)
+# Claude Code + Codex toolytics tracker.
+# Scans ~/.claude/projects/**/*.jsonl and ~/.codex/sessions/**/*.jsonl, accumulates tidy tables
+#   tools:   (date, runtime, triggered_by, project, tool, count)
 #   tokens:  (date, triggered_by, project, model, input, output, cache_read, cw5m, cw1h)
 #   injects: (date, triggered_by, project, source, count)
 # into persistent history DBs, rebuilds a self-contained dashboard, and opens it.
@@ -17,10 +17,10 @@ SRC="$(cd "$(dirname "$0")" && pwd)"          # holds dashboard.template.html
 OUT="${TOOLYTICS_HOME:-$HOME/.toolytics}"        # persistent base (history + dashboard)
 
 if [ "${1:-}" = "--selfcheck" ]; then
-  python3 - <<'PY'
+  python3 - "$SRC/build.sh" <<'PY'
 # ponytail: the only non-trivial logic here is replace-by-date merge + the
 # inject reverse-map. One runnable check each; fails loudly if either regresses.
-import datetime
+import datetime, os, json, csv, tempfile, subprocess, sys
 def merge_by_group(existing, scanned_groups, new_rows):
     # mirror of the merge in the main script: drop existing rows whose (date,by,project)
     # GROUP the scan covered (scan is authoritative for those), keep the rest, add new.
@@ -68,6 +68,39 @@ assert attrib('cmdA', {}, {}, L, {}) == 'superpowers', "learned cache regressed 
 La = {}                                                                     # orphan predating cache:
 assert attrib('x/check-setup.sh', {}, {}, La, {'check-setup.sh': 'superpowers'}) == 'superpowers'
 assert La.get('x/check-setup.sh') == 'superpowers', "alias did not seed the cache"
+
+# 7. Codex scan: main/subagent calls are collected separately and a legacy Claude
+# history row survives the schema migration.
+script = sys.argv[1]
+with tempfile.TemporaryDirectory() as home:
+    root = os.path.join(home, '.codex', 'sessions', '2026', '06', '25')
+    os.makedirs(root)
+    main_rows = [
+        {'timestamp': '2026-06-25T01:00:00Z', 'type': 'session_meta',
+         'payload': {'cwd': home, 'thread_source': 'user', 'source': 'cli'}},
+        {'timestamp': '2026-06-25T01:00:01Z', 'type': 'response_item',
+         'payload': {'type': 'function_call', 'name': 'exec_command'}},
+    ]
+    agent_rows = [
+        {'timestamp': '2026-06-25T01:00:02Z', 'type': 'session_meta',
+         'payload': {'cwd': home, 'thread_source': 'subagent', 'source': {'subagent': {}}}},
+        {'timestamp': '2026-06-25T01:00:03Z', 'type': 'response_item',
+         'payload': {'type': 'custom_tool_call', 'name': 'exec'}},
+    ]
+    for name, rows in [('main.jsonl', main_rows), ('agent.jsonl', agent_rows)]:
+        with open(os.path.join(root, name), 'w') as fh:
+            fh.writelines(json.dumps(row) + '\n' for row in rows)
+    out = os.path.join(home, 'out')
+    os.makedirs(out)
+    with open(os.path.join(out, 'history.csv'), 'w') as fh:
+        fh.write('date,triggered_by,project,tool,count\n2026-01-01,main,legacy,Read,7\n')
+    subprocess.run([script, '1'], check=True, env={**os.environ, 'HOME': home,
+                   'TOOLYTICS_HOME': out, 'TOOLYTICS_OPEN': '0'})
+    with open(os.path.join(out, 'history.csv')) as fh:
+        got = list(csv.DictReader(fh))
+    assert {(r['runtime'], r['triggered_by'], r['tool']) for r in got} == {
+        ('claude', 'main', 'Read'), ('codex', 'main', 'exec_command'),
+        ('codex', 'agent', 'exec')}
 print("selfcheck OK: all assertions passed")
 PY
   exit 0
@@ -226,12 +259,13 @@ for d, fs in bydir.items():
     cwd = first_cwd(mains) or first_cwd(fs)
     labels[d] = label_from_cwd(cwd) if cwd else label_from_dir(d)
 
-scan   = collections.Counter()   # (date, by, project, tool) -> count
+scan   = collections.Counter()   # (date, runtime, by, project, tool) -> count
 tok    = collections.Counter()   # (date, by, project, model, field) -> tokens
 inj    = collections.Counter()   # (date, by, project, source) -> firings
-scanned_groups = set()           # (date,by,project) groups present on disk -> scan is authoritative
-                                 # for each. finer than whole-date: a date with project A still on
-                                 # disk but project B's logs deleted won't wipe B's accumulated rows.
+tool_scanned_groups = set()      # (date,runtime,by,project) groups present on disk -> scan is authoritative
+claude_scanned_groups = set()    # (date,by,project), for Claude-only token/inject tables
+                                 # Both are finer than whole-date: a date with project A still on disk but
+                                 # project B's logs deleted won't wipe B's accumulated rows.
 for f in files:
     by   = 'agent' if '/subagents/' in f else 'main'
     proj = labels[f.split('/projects/')[1].split('/')[0]]
@@ -241,7 +275,8 @@ for f in files:
         t = pts(o.get('timestamp', '') or '')
         if not t: continue
         d = t.date().isoformat()
-        scanned_groups.add((d, by, proj))              # any timestamped record == this group is on disk
+        tool_scanned_groups.add((d, 'claude', by, proj))
+        claude_scanned_groups.add((d, by, proj))
         if o.get('type') == 'attachment':
             isrc = attrib_inject(o.get('attachment') or {})
             if isrc: inj[(d, by, proj, isrc)] += 1
@@ -264,7 +299,39 @@ for f in files:
                 n = b.get('name', '?')
                 if n == 'Skill':
                     n = 'skill:' + str((b.get('input') or {}).get('skill', '?'))
-                scan[(d, by, proj, n)] += 1
+                scan[(d, 'claude', by, proj, n)] += 1
+
+def codex_context(path):
+    by, cwd = 'main', None
+    for line in open(path, errors='ignore'):
+        try: record = json.loads(line)
+        except Exception: continue
+        payload = record.get('payload')
+        if not isinstance(payload, dict): continue
+        if record.get('type') == 'session_meta':
+            cwd = cwd or payload.get('cwd')
+            source = payload.get('source')
+            if payload.get('thread_source') == 'subagent' or (
+                isinstance(source, dict) and 'subagent' in source):
+                by = 'agent'
+        elif record.get('type') == 'turn_context':
+            cwd = cwd or payload.get('cwd')
+    return by, label_from_cwd(cwd) if cwd else 'codex'
+
+for f in glob.glob(os.path.expanduser('~/.codex/sessions/**/*.jsonl'), recursive=True):
+    by, proj = codex_context(f)
+    for line in open(f, errors='ignore'):
+        try: record = json.loads(line)
+        except Exception: continue
+        t = pts(record.get('timestamp', '') or '')
+        if not t: continue
+        d = t.date().isoformat()
+        tool_scanned_groups.add((d, 'codex', by, proj))
+        payload = record.get('payload')
+        if not isinstance(payload, dict) or record.get('type') != 'response_item': continue
+        if payload.get('type') not in ('function_call', 'custom_tool_call'): continue
+        name = payload.get('name')
+        if name: scan[(d, 'codex', by, proj, name)] += 1
 
 # --- 2. merge into history DBs by REPLACE-BY-DATE (idempotent; preserves rotated-out dates) ---
 def load(path, ncols):
@@ -278,16 +345,36 @@ def load(path, ncols):
                     h[tuple(key)] = int(val)
     return h
 def merge_write(path, header, existing, scan_counter):
-    hist = {k: v for k, v in existing.items() if (k[0], k[1], k[2]) not in scanned_groups}
+    hist = {k: v for k, v in existing.items() if (k[0], k[1], k[2]) not in claude_scanned_groups}
     hist.update(scan_counter)
     rows = sorted([list(k) + [v] for k, v in hist.items()])
     with open(path, 'w', newline='') as fh:
         w = csv.writer(fh); w.writerow(header); w.writerows(rows)
     return rows
 
-tool_rows = merge_write(os.path.join(out, 'history.csv'),
-    ['date', 'triggered_by', 'project', 'tool', 'count'],
-    load(os.path.join(out, 'history.csv'), 5), scan)
+def load_tool_history(path):
+    hist = {}
+    if not os.path.exists(path): return hist
+    with open(path) as fh:
+        r = csv.reader(fh); next(r, None)
+        for row in r:
+            if len(row) == 5:
+                d, by, proj, tool, count = row
+                hist[(d, 'claude', by, proj, tool)] = int(count)
+            elif len(row) == 6:
+                d, runtime, by, proj, tool, count = row
+                hist[(d, runtime, by, proj, tool)] = int(count)
+    return hist
+def merge_tool_history(existing, fresh):
+    hist = {k: v for k, v in existing.items() if (k[0], k[1], k[2], k[3]) not in tool_scanned_groups}
+    hist.update(fresh)
+    return sorted([*k, v] for k, v in hist.items())
+
+tool_rows = merge_tool_history(load_tool_history(os.path.join(out, 'history.csv')), scan)
+with open(os.path.join(out, 'history.csv'), 'w', newline='') as fh:
+    w = csv.writer(fh)
+    w.writerow(['date', 'runtime', 'triggered_by', 'project', 'tool', 'count'])
+    w.writerows(tool_rows)
 inj_rows = merge_write(os.path.join(out, 'injects.csv'),
     ['date', 'triggered_by', 'project', 'source', 'count'],
     load(os.path.join(out, 'injects.csv'), 5), inj)
@@ -307,7 +394,7 @@ if os.path.exists(tpath):
 tok_wide = collections.defaultdict(lambda: [0, 0, 0, 0, 0])
 for (d, by, proj, model, field), v in tok.items():
     tok_wide[(d, by, proj, model)][TFIELDS.index(field)] += v
-tok_hist = {k: v for k, v in tok_existing.items() if (k[0], k[1], k[2]) not in scanned_groups}
+tok_hist = {k: v for k, v in tok_existing.items() if (k[0], k[1], k[2]) not in claude_scanned_groups}
 tok_hist.update(tok_wide)
 tok_rows = sorted([list(k) + v for k, v in tok_hist.items()])
 with open(tpath, 'w', newline='') as fh:
@@ -338,7 +425,7 @@ meta = {
     'default_from': default_from,
     'view_days': view_days,
     'generated': datetime.datetime.now().strftime('%Y-%m-%d %H:%M'),
-    'total': sum(r[4] for r in tool_rows),
+    'total': sum(r[5] for r in tool_rows),
 }
 data_js = 'const DATA=' + json.dumps(meta, ensure_ascii=False, separators=(',', ':')) + ';'
 tpl = open(os.path.join(src, 'dashboard.template.html')).read()
