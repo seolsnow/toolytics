@@ -101,6 +101,9 @@ with tempfile.TemporaryDirectory() as home:
     assert {(r['runtime'], r['triggered_by'], r['tool']) for r in got} == {
         ('claude', 'main', 'Read'), ('codex', 'main', 'exec_command'),
         ('codex', 'agent', 'exec')}
+    dashboard = open(os.path.join(out, 'dashboard.html')).read()
+    assert 'id="f-runtime"' in dashboard, "dashboard has no runtime filter"
+    assert 'function passTool(r)' in dashboard, "dashboard does not filter six-field tool rows"
 print("selfcheck OK: all assertions passed")
 PY
   exit 0
