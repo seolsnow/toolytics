@@ -45,24 +45,31 @@ Pass "$SRC/build.sh" as sys.argv[1] to the self-check Python block. Add this exa
         ]
         agent_rows = [
             {'timestamp': '2026-06-25T01:00:02Z', 'type': 'session_meta',
-             'payload': {'cwd': home, 'thread_source': 'subagent', 'source': {'subagent': {}}}},
+             'payload': {'cwd': home, 'source': {'subagent': {}}}},
             {'timestamp': '2026-06-25T01:00:03Z', 'type': 'response_item',
              'payload': {'type': 'custom_tool_call', 'name': 'exec'}},
         ]
-        for name, rows in [('main.jsonl', main_rows), ('agent.jsonl', agent_rows)]:
+        thread_agent_rows = [
+            {'timestamp': '2026-06-25T01:00:04Z', 'type': 'session_meta',
+             'payload': {'cwd': home, 'thread_source': 'subagent', 'source': 'cli'}},
+            {'timestamp': '2026-06-25T01:00:05Z', 'type': 'response_item',
+             'payload': {'type': 'function_call', 'name': 'view_image'}},
+        ]
+        for name, rows in [('main.jsonl', main_rows), ('agent.jsonl', agent_rows),
+                           ('thread-agent.jsonl', thread_agent_rows)]:
             with open(os.path.join(root, name), 'w') as fh:
                 fh.writelines(json.dumps(row) + '\n' for row in rows)
         out = os.path.join(home, 'out')
         os.makedirs(out)
         with open(os.path.join(out, 'history.csv'), 'w') as fh:
-            fh.write('date,triggered_by,project,tool,count\n2026-01-01,main,legacy,Read,7\n')
+            fh.write('date,triggered_by,project,tool,count\n2026-06-25,main,legacy,Read,7\n')
         subprocess.run([script, '1'], check=True, env={**os.environ, 'HOME': home,
                        'TOOLYTICS_HOME': out, 'TOOLYTICS_OPEN': '0'})
         with open(os.path.join(out, 'history.csv')) as fh:
             got = list(csv.DictReader(fh))
         assert {(r['runtime'], r['triggered_by'], r['tool']) for r in got} == {
             ('claude', 'main', 'Read'), ('codex', 'main', 'exec_command'),
-            ('codex', 'agent', 'exec')}
+            ('codex', 'agent', 'exec'), ('codex', 'agent', 'view_image')}
 
 - [ ] **Step 2: Verify RED**
 

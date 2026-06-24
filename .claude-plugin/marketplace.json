@@ -2,14 +2,14 @@
   "name": "toolytics",
   "owner": { "name": "seolsnow" },
   "metadata": {
-    "description": "Marketplace for the Claude Code usage-tracking tool",
-    "version": "0.1.0"
+    "description": "Marketplace for the Claude Code + Codex usage-tracking tool",
+    "version": "0.1.5"
   },
   "plugins": [
     {
       "name": "toolytics",
       "source": "./",
-      "description": "Skill/tool/token usage dashboard + a daemon that collects daily before transcript cleanup"
+      "description": "Claude Code + Codex tool usage dashboard + a daemon that collects daily before transcript cleanup"
     }
   ]
 }
