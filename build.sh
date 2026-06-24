@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Claude Code tool-usage tracker.
+# Claude Code toolytics tracker.
 # Scans ~/.claude/projects/**/*.jsonl, accumulates tidy tables
 #   tools:   (date, triggered_by, project, tool, count)
 #   tokens:  (date, triggered_by, project, model, input, output, cache_read, cw5m, cw1h)
@@ -8,13 +8,13 @@
 #
 # Usage:  ./build.sh [VIEW_DAYS]      # default dashboard window, default 30 (data keeps ALL)
 #         ./build.sh --selfcheck      # run merge/dedup invariant checks and exit
-# Env:    CC_USAGE_HOME  output dir (default ~/.cc-usage)
-#         CC_USAGE_OPEN  set 0 to skip opening the browser
-#         CC_USAGE_TRIM  comma-separated leading path segments to drop from project
+# Env:    TOOLYTICS_HOME  output dir (default ~/.toolytics)
+#         TOOLYTICS_OPEN  set 0 to skip opening the browser
+#         TOOLYTICS_TRIM  comma-separated leading path segments to drop from project
 #                        labels, e.g. "hsc,work" (default empty — labels are home-relative)
 set -euo pipefail
 SRC="$(cd "$(dirname "$0")" && pwd)"          # holds dashboard.template.html
-OUT="${CC_USAGE_HOME:-$HOME/.cc-usage}"        # persistent base (history + dashboard)
+OUT="${TOOLYTICS_HOME:-$HOME/.toolytics}"        # persistent base (history + dashboard)
 
 if [ "${1:-}" = "--selfcheck" ]; then
   python3 - <<'PY'
@@ -79,9 +79,9 @@ def canon_model(m):
         if key in m: return key
     return m or 'unknown'
 
-# optional cosmetic shortening: CC_USAGE_TRIM="hsc,work" strips a leading path
+# optional cosmetic shortening: TOOLYTICS_TRIM="hsc,work" strips a leading path
 # segment from labels. Empty by default — no personal prefix baked into the distro.
-TRIM = [p.strip().strip('/') for p in os.environ.get('CC_USAGE_TRIM', '').split(',') if p.strip()]
+TRIM = [p.strip().strip('/') for p in os.environ.get('TOOLYTICS_TRIM', '').split(',') if p.strip()]
 def label_from_cwd(cwd):
     rel = cwd[len(HOME):].lstrip('/') if cwd.startswith(HOME) else cwd.lstrip('/')
     for pre in TRIM:                                    # strip first matching leading segment
@@ -312,6 +312,6 @@ PY
 
 DASH="$OUT/dashboard.html"
 echo "→ $DASH"
-if [ "${CC_USAGE_OPEN:-1}" != "0" ]; then
+if [ "${TOOLYTICS_OPEN:-1}" != "0" ]; then
   open "$DASH" 2>/dev/null || xdg-open "$DASH" 2>/dev/null || true
 fi

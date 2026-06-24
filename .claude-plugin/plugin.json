@@ -1,5 +1,5 @@
 {
-  "name": "cc-usage",
+  "name": "toolytics",
   "description": "Claude Code 스킬·툴·토큰 사용량 대시보드 + 트랜스크립트 cleanup 전에 매일 자동 수집하는 데몬",
   "version": "0.1.0",
   "author": { "name": "seolsnow" },

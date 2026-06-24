@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# cc-usage scheduler installer — portable, idempotent, self-configuring.
+# toolytics scheduler installer — portable, idempotent, self-configuring.
 # Schedules build.sh once a day so usage history is captured into the persistent
 # CSVs BEFORE Claude Code's transcript cleanup (default 30d) deletes the source logs.
 #   macOS -> launchd LaunchAgent
@@ -12,11 +12,11 @@
 #   ./install-daemon.sh --remove   # uninstall
 set -euo pipefail
 
-LABEL="com.seolsnow.cc-usage"
+LABEL="com.seolsnow.toolytics"
 SRC="$(cd "$(dirname "$0")" && pwd)"            # holds build.sh
 BUILD="$SRC/build.sh"
 HOUR=12; MIN=0                                  # daily run time (local)
-OUT="${CC_USAGE_HOME:-$HOME/.cc-usage}"
+OUT="${TOOLYTICS_HOME:-$HOME/.toolytics}"
 LOG="$OUT/scheduler.log"
 PYBIN="$(command -v python3 || true)"
 [ -n "$PYBIN" ] || { echo "python3 not found on PATH" >&2; exit 1; }
@@ -42,7 +42,7 @@ mac_install() {
   <array><string>/bin/bash</string><string>$BUILD</string></array>
   <key>EnvironmentVariables</key>
   <dict>
-    <key>CC_USAGE_OPEN</key><string>0</string>
+    <key>TOOLYTICS_OPEN</key><string>0</string>
     <key>PATH</key><string>$PYDIR:/usr/bin:/bin:/usr/sbin:/sbin</string>
   </dict>
   <key>StartCalendarInterval</key>
@@ -63,8 +63,8 @@ PLISTEOF
 UD="$HOME/.config/systemd/user"
 lin_remove() {
   if command -v systemctl >/dev/null 2>&1; then
-    systemctl --user disable --now cc-usage.timer 2>/dev/null || true
-    rm -f "$UD/cc-usage.timer" "$UD/cc-usage.service"
+    systemctl --user disable --now toolytics.timer 2>/dev/null || true
+    rm -f "$UD/toolytics.timer" "$UD/toolytics.service"
     systemctl --user daemon-reload 2>/dev/null || true
   fi
   ( crontab -l 2>/dev/null | grep -v "# $LABEL" || true ) | crontab - 2>/dev/null || true
@@ -73,17 +73,17 @@ lin_remove() {
 lin_install() {
   if command -v systemctl >/dev/null 2>&1; then
     mkdir -p "$UD"
-    cat > "$UD/cc-usage.service" <<UNITEOF
+    cat > "$UD/toolytics.service" <<UNITEOF
 [Unit]
-Description=cc-usage daily usage scan
+Description=toolytics daily usage scan
 [Service]
 Type=oneshot
-Environment=CC_USAGE_OPEN=0
+Environment=TOOLYTICS_OPEN=0
 ExecStart=/bin/bash $BUILD
 UNITEOF
-    cat > "$UD/cc-usage.timer" <<UNITEOF
+    cat > "$UD/toolytics.timer" <<UNITEOF
 [Unit]
-Description=cc-usage daily usage scan timer
+Description=toolytics daily usage scan timer
 [Timer]
 OnCalendar=*-*-* $(printf '%02d:%02d' "$HOUR" "$MIN"):00
 Persistent=true
@@ -91,11 +91,11 @@ Persistent=true
 WantedBy=timers.target
 UNITEOF
     systemctl --user daemon-reload
-    systemctl --user enable --now cc-usage.timer
+    systemctl --user enable --now toolytics.timer
     loginctl enable-linger "$USER" 2>/dev/null || true   # run even when logged out (best-effort)
-    echo "installed systemd --user timer cc-usage.timer (daily $(printf '%02d:%02d' "$HOUR" "$MIN"))"
+    echo "installed systemd --user timer toolytics.timer (daily $(printf '%02d:%02d' "$HOUR" "$MIN"))"
   else
-    local line="$MIN $HOUR * * * CC_USAGE_OPEN=0 PATH=$PYDIR:/usr/bin:/bin /bin/bash $BUILD >> $LOG 2>&1 # $LABEL"
+    local line="$MIN $HOUR * * * TOOLYTICS_OPEN=0 PATH=$PYDIR:/usr/bin:/bin /bin/bash $BUILD >> $LOG 2>&1 # $LABEL"
     ( crontab -l 2>/dev/null | grep -v "# $LABEL" || true; echo "$line" ) | crontab -
     echo "installed cron job (daily $(printf '%02d:%02d' "$HOUR" "$MIN")); systemd not found"
   fi
@@ -105,7 +105,7 @@ UNITEOF
 mac_ensure() { launchctl print "gui/$(id -u)/$LABEL" >/dev/null 2>&1 || mac_install; }
 lin_ensure() {
   if command -v systemctl >/dev/null 2>&1; then
-    systemctl --user is-enabled cc-usage.timer >/dev/null 2>&1 || lin_install
+    systemctl --user is-enabled toolytics.timer >/dev/null 2>&1 || lin_install
   else
     crontab -l 2>/dev/null | grep -q "# $LABEL" || lin_install
   fi
