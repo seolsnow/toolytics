@@ -54,10 +54,39 @@ From a terminal (non-interactive):
 claude plugin marketplace add seolsnow/toolytics
 claude plugin install toolytics@toolytics --scope user
 ```
-Once installed, `/toolytics` builds the dashboard, and a SessionStart hook
-self-installs the daily collector daemon (macOS launchd / Linux systemd·cron).
-It gathers data before transcript cleanup (default 30 days) so past history is
-preserved.
+Once installed, a SessionStart hook self-installs the daily collector daemon
+(macOS launchd / Linux systemd·cron), which gathers data before transcript
+cleanup (default 30 days) so past history is preserved.
+
+## Day-to-day use — no permission prompts
+
+Claude Code gates any plugin that shells out: it will ask before running a
+command, and ask once to trust a plugin's hooks. toolytics needs both (it's a
+scanner + a daemon), so a fresh install hits two prompts. **You don't have to
+live with them** — the daemon sidesteps both:
+
+- **The daemon runs outside Claude Code.** Once installed, the OS scheduler
+  runs `build.sh` daily on its own — no Claude, no permission prompt ever. It
+  rebuilds `~/.toolytics/dashboard.html` every day.
+- **Viewing needs no command.** Just open the file the daemon already built —
+  bookmark `file://$HOME/.toolytics/dashboard.html`. No Claude involved, so no
+  gate. This is the normal daily path.
+- **`/toolytics` is only for an on-demand rebuild** (when you want *right now*,
+  not yesterday's). That's the one path that runs bash through Claude. To make
+  it silent, click **"Yes, always allow"** on the first prompt, or add this to
+  `~/.claude/settings.json` once:
+  ```json
+  "permissions": { "allow": ["Bash(bash *toolytics*build.sh*)"] }
+  ```
+- **The hook-trust prompt is one-time and safe to decline.** It only registers
+  the daemon. If you decline (or want zero hooks), install the daemon yourself
+  from a terminal — no Claude gate at all. From a clone of this repo:
+  ```sh
+  bash install-daemon.sh install
+  ```
+  (plugin-only install? the script lives at
+  `~/.claude/plugins/cache/toolytics/toolytics/*/install-daemon.sh`.)
+  Either way the daemon takes over and the prompts never come back.
 
 ## Environment variables
 - `TOOLYTICS_HOME` — output directory (default `~/.toolytics`)
