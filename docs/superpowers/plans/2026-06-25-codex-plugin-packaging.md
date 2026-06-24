@@ -113,7 +113,7 @@ Create `.agents/plugins/marketplace.json` exactly. The local `./` source resolve
 
 - [ ] **Step 4: Create the Codex skill**
 
-Create `skills/toolytics/SKILL.md` exactly. The cache path follows Codex's documented local-plugin cache layout for marketplace `toolytics` and plugin `toolytics`.
+Create `skills/toolytics/SKILL.md` exactly. The skill locates the installed cache version dynamically for marketplace `toolytics` and plugin `toolytics`.
 
 ````md
 ---
@@ -126,11 +126,12 @@ description: Build or open the local toolytics dashboard for Claude Code and Cod
 Build the dashboard from the installed plugin copy.
 
 1. If the user specifies a positive number of days, pass that number as the only argument. Otherwise, omit the argument.
-2. Run one of these commands:
+2. Locate the installed build script, then run it:
 
    ```sh
-   bash "$HOME/.codex/plugins/cache/toolytics/toolytics/local/build.sh"
-   bash "$HOME/.codex/plugins/cache/toolytics/toolytics/local/build.sh" 7
+   build_script="$(find "$HOME/.codex/plugins/cache/toolytics/toolytics/" -name build.sh -print -quit)"
+   bash "$build_script"
+   bash "$build_script" 7
    ```
 
 3. Report the dashboard location: `~/.toolytics/dashboard.html`, unless `TOOLYTICS_HOME` was set.
@@ -165,6 +166,8 @@ assert 'hooks' not in manifest
 assert marketplace['plugins'][0]['source'] == {'source': 'local', 'path': './'}
 assert skill.startswith('---\nname: toolytics\n')
 assert 'install-daemon.sh ensure' not in skill
+assert 'find "$HOME/.codex/plugins/cache/toolytics/toolytics/" -name build.sh -print -quit' in skill
+assert 'local' + '/build.sh' not in skill
 assert 'install-daemon.sh' in hook['hooks']['SessionStart'][0]['hooks'][0]['command']
 PY
 ```
