@@ -1,4 +1,4 @@
-<title>Claude Code + Codex · Tool-Usage Telemetry</title>
+<title>toolytics : Claude Code + Codex · Tool-Usage Telemetry</title>
 <style>
   :root{
     --ground:#12141A; --panel:#191C24; --line:#2A2E3A; --line2:#363B49;
@@ -15,7 +15,8 @@
   .wrap{max-width:940px;margin:0 auto;padding:0 24px 80px}
 
   header{padding:56px 0 30px;border-bottom:1px solid var(--line)}
-  .eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.22em;color:var(--hot);margin:0 0 16px}
+  .eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.22em;color:var(--muted);margin:0 0 16px}
+  .eyebrow .brand{color:var(--hot);font-weight:800;letter-spacing:.08em}
   h1{font-size:clamp(30px,5vw,52px);font-weight:800;letter-spacing:-.025em;
     line-height:1.04;margin:0 0 8px}
   h1 .sub{display:block;color:var(--muted);font-weight:600;font-size:.44em;
@@ -154,7 +155,7 @@
 
 <div class="wrap">
   <header>
-    <p class="eyebrow">Claude Code + Codex · Tool-Usage Telemetry</p>
+    <p class="eyebrow"><span class="brand">toolytics</span> : Claude Code + Codex · Tool-Usage Telemetry</p>
     <h1>What the agent actually did<span class="sub">Every tool call across all projects · filter by runtime, who, where, when</span></h1>
 
     <div class="filters">
