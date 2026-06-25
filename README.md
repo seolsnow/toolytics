@@ -3,8 +3,6 @@
 A self-contained dashboard for **your own Claude Code and Codex usage** — which
 tools and MCP methods you actually reach for, and how often.
 
-![toolytics dashboard — what the agent actually did](assets/dashboard-overview.png)
-
 ![toolytics dashboard — skills and MCP tools](assets/dashboard-skills.png)
 
 ## What it does (and why you'd want it)
@@ -15,6 +13,9 @@ aggregate. toolytics reads `~/.claude/projects/**/*.jsonl` and
 
 - **What do I actually use?** Every tool, `skill:<name>` invocation, and
   `mcp__server__method` call, ranked by count across *all* your projects.
+- **What's a workhorse vs. dead weight?** Because everything is ranked by count,
+  the tools you lean on rise to the top and the ones you barely (or never) reach
+  for sink to the bottom — easy to spot what to keep, prune, or reconsider.
 - **Claude vs. Codex, direct vs. delegated.** Filter the two runtimes, then
   split main-session calls from calls your subagents/workflows made for you.
 - **Which skills auto-fire?** Real counts of SessionStart hook injections
