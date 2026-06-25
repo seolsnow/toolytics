@@ -56,7 +56,10 @@ a speed-up — delete it any time and the next run full-scans and rebuilds it.
   Windows home transcript roots, opens the dashboard via `cmd start`, and
   `install-daemon.sh` registers a per-user Windows Scheduled Task with
   `schtasks`. `bash`, `python3`, and `schtasks` must be available from that
-  shell.
+  shell. Note: `python3` must resolve to a real Python — the Microsoft Store
+  stub at `WindowsApps\python3.exe` opens the Store instead. If your install
+  ships only `python.exe` (the winget `Python.Python.3.x` package does), make
+  `python3.exe` a one-time hardlink to it in the Python install dir.
 
 Native Windows support is intentionally the Git Bash path, not a PowerShell or
 `cmd.exe` installer. WSL remains separate: running toolytics inside WSL scans
