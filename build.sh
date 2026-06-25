@@ -16,7 +16,7 @@ SRC="$(cd "$(dirname "$0")" && pwd)"          # holds dashboard.template.html
 OUT="${TOOLYTICS_HOME:-$HOME/.toolytics}"        # persistent base (history + dashboard)
 
 if [ "${1:-}" = "--selfcheck" ]; then
-  python3 - "$SRC/build.sh" <<'PY'
+  PYTHONUTF8=1 python3 - "$SRC/build.sh" <<'PY'
 # ponytail: the only non-trivial logic here is replace-by-date merge + the
 # inject reverse-map. One runnable check each; fails loudly if either regresses.
 import datetime, os, json, csv, tempfile, subprocess, sys
@@ -233,11 +233,20 @@ fi
 VIEW_DAYS="${1:-30}"
 mkdir -p "$OUT"
 
-python3 - "$VIEW_DAYS" "$SRC" "$OUT" <<'PY'
+PYTHONUTF8=1 python3 - "$VIEW_DAYS" "$SRC" "$OUT" <<'PY'
 import sys, os, glob, json, csv, datetime, collections, re
 
+# Windows: glob.glob returns native (backslash) paths, but the rest of this
+# script splits on POSIX markers like '/projects/', '/subagents/', '/cache/'.
+# Normalize globbed paths once so every downstream string op stays portable.
+if os.sep != '/':
+    _orig_glob = glob.glob
+    def _norm_glob(pat, *a, **kw):
+        return [p.replace(os.sep, '/') for p in _orig_glob(pat, *a, **kw)]
+    glob.glob = _norm_glob
+
 view_days = int(sys.argv[1]); src, out = sys.argv[2], sys.argv[3]
-HOME = os.path.expanduser('~')
+HOME = os.path.expanduser('~').replace(os.sep, '/')
 
 # optional cosmetic shortening: TOOLYTICS_TRIM="hsc,work" strips a leading path
 # segment from labels. Empty by default — no personal prefix baked into the distro.
@@ -602,5 +611,10 @@ PY
 DASH="$OUT/dashboard.html"
 echo "→ $DASH"
 if [ "${TOOLYTICS_OPEN:-1}" != "0" ]; then
-  open "$DASH" 2>/dev/null || xdg-open "$DASH" 2>/dev/null || true
+  # Windows (Git Bash / MSYS / Cygwin): no `open`/`xdg-open`; use cmd's `start`.
+  # The empty "" arg is the window title placeholder so paths with spaces work.
+  case "$(uname -s)" in
+    MINGW*|MSYS*|CYGWIN*) cmd //c start "" "$(cygpath -w "$DASH")" >/dev/null 2>&1 || true ;;
+    *) open "$DASH" 2>/dev/null || xdg-open "$DASH" 2>/dev/null || true ;;
+  esac
 fi

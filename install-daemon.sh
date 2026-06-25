@@ -104,6 +104,48 @@ UNITEOF
   fi
 }
 
+# ---------- Windows (Git Bash / MSYS / Cygwin): schtasks ----------
+# Native Windows path: register a Scheduled Task that runs build.sh via Git Bash
+# once a day. A tiny .cmd wrapper at $OUT/run-daemon.cmd stabilizes PATH and
+# quoting so the schtasks command stays simple and re-installable.
+TASK_NAME="toolytics"
+WRAPPER="$OUT/run-daemon.cmd"
+win_paths() {
+  WIN_BUILD="$(cygpath -w "$BUILD")"
+  WIN_LOG="$(cygpath -w "$LOG")"
+  WIN_WRAPPER="$(cygpath -w "$WRAPPER")"
+  WIN_PYDIR="$(cygpath -w "$PYDIR")"
+  BASH_PATH="$(command -v bash)"
+  WIN_BASH_DIR="$(dirname "$(cygpath -w "$BASH_PATH")")"
+}
+win_write_wrapper() {
+  win_paths
+  cat > "$WRAPPER" <<WRAPEOF
+@echo off
+set "PATH=$WIN_PYDIR;$WIN_BASH_DIR;%PATH%"
+set TOOLYTICS_OPEN=0
+bash -c "exec '$BUILD' >> '$LOG' 2>&1"
+WRAPEOF
+}
+win_remove() {
+  MSYS_NO_PATHCONV=1 schtasks /Delete /TN "$TASK_NAME" /F >/dev/null 2>&1 || true
+  rm -f "$WRAPPER"
+  echo "removed scheduled task $TASK_NAME"
+}
+win_install() {
+  win_write_wrapper
+  MSYS_NO_PATHCONV=1 schtasks /Delete /TN "$TASK_NAME" /F >/dev/null 2>&1 || true
+  MSYS_NO_PATHCONV=1 schtasks /Create /TN "$TASK_NAME" /SC DAILY \
+    /ST "$(printf '%02d:%02d' "$HOUR" "$MIN")" \
+    /TR "\"$WIN_WRAPPER\"" /F >/dev/null
+  echo "installed scheduled task $TASK_NAME -> $WIN_WRAPPER (daily $(printf '%02d:%02d' "$HOUR" "$MIN"))"
+}
+win_ensure() {
+  win_paths
+  MSYS_NO_PATHCONV=1 schtasks /Query /TN "$TASK_NAME" /V /FO LIST 2>/dev/null \
+    | grep -F -q "$WIN_WRAPPER" || win_install
+}
+
 # ---------- ensure: install if missing OR if the registered build path is stale ----------
 # a plugin version bump moves build.sh (cache/.../0.1.1 -> 0.1.2); the old path is then
 # deleted and the daily collector would silently die. so ensure must also refresh when the
@@ -129,5 +171,8 @@ case "$(uname -s):$ACTION" in
   Linux:install)   lin_install ;;
   Linux:ensure)    lin_ensure ;;
   Linux:--remove)  lin_remove ;;
+  MINGW*:install|MSYS*:install|CYGWIN*:install)        win_install ;;
+  MINGW*:ensure|MSYS*:ensure|CYGWIN*:ensure)           win_ensure ;;
+  MINGW*:--remove|MSYS*:--remove|CYGWIN*:--remove)     win_remove ;;
   *) echo "unsupported: OS=$(uname -s) action=$ACTION (try: install | ensure | --remove)" >&2; exit 1 ;;
 esac
