@@ -91,6 +91,20 @@
   .sk-seg button{font-size:11px;padding:5px 11px}
   .shead .meta{font-family:var(--mono);font-size:12px;color:var(--dim);letter-spacing:.03em}
   .snote{color:var(--muted);font-size:13.5px;margin:0 0 22px;max-width:66ch}
+  /* hover-on-demand section note: ⓘ icon in the header, explanation in a popover */
+  .info{position:relative;display:inline-flex;align-items:center;justify-content:center;
+    width:16px;height:16px;border-radius:50%;border:1px solid var(--line2);
+    color:var(--dim);font:600 10px/1 var(--mono);font-style:normal;cursor:help;
+    align-self:center;flex:none}
+  .info::after{content:"i"}
+  .info:hover,.info:focus-visible{color:var(--text);border-color:var(--dim);outline:none}
+  .info .tip{display:none;position:absolute;z-index:30;top:calc(100% + 8px);left:0;
+    width:max-content;max-width:min(92vw,420px);
+    background:var(--panel);border:1px solid var(--line2);border-radius:8px;
+    box-shadow:0 12px 30px rgba(0,0,0,.5);padding:11px 13px;cursor:auto;
+    color:var(--muted);font:400 13px/1.55 var(--sans);letter-spacing:0;
+    white-space:normal;text-align:left}
+  .info:hover .tip,.info:focus-within .tip{display:block}
   .unused-skills{margin-top:18px;border-top:1px solid var(--line);padding-top:13px}
   .unused-skills summary{display:flex;align-items:baseline;gap:12px;cursor:pointer;
     color:var(--muted);font-family:var(--mono);font-size:12px;letter-spacing:.04em}
@@ -117,6 +131,8 @@
   .ct .pct{display:block;font-size:10.5px;font-weight:400;color:var(--dim)}
 
   footer{padding-top:36px;color:var(--dim);font-family:var(--mono);font-size:12px;line-height:1.8}
+  footer a{color:var(--muted);text-decoration:none}
+  footer a:hover{color:var(--hot)}
   .legend{display:flex;align-items:center;gap:10px;font-family:var(--mono);font-size:11px;
     letter-spacing:.12em;color:var(--dim);margin:26px 0 4px}
   .pager{display:flex;align-items:center;gap:4px;margin-top:14px;flex-wrap:wrap}
@@ -185,14 +201,13 @@
   </header>
 
   <section id="s-skills">
-    <div class="shead"><h2>Skills</h2><span class="meta" id="m-skills"></span>
+    <div class="shead"><h2>Skills</h2><span class="info" tabindex="0"><span class="tip">Pinned <b style="color:var(--muted)">inject</b> rows = real SessionStart hook auto-injections (counted from transcript attachments, not the Skill tool), attributed per-machine from your installed plugins + settings. Below the divider, skills invoked via the Skill tool — <b style="color:var(--muted)">User</b> (bare name) vs <b style="color:var(--muted)">Plugin</b> (dimmed <span style="font-family:var(--mono)">namespace:</span> prefix).</span></span><span class="meta" id="m-skills"></span>
       <div class="seg sk-seg" id="sk-origin">
         <button data-v="all" aria-pressed="true">All</button>
         <button data-v="user">User</button>
         <button data-v="plugin">Plugin</button>
       </div>
     </div>
-    <p class="snote">Pinned <b style="color:var(--muted)">inject</b> rows = real SessionStart hook auto-injections (counted from transcript attachments, not the Skill tool), attributed per-machine from your installed plugins + settings. Below the divider, skills invoked via the Skill tool — <b style="color:var(--muted)">User</b> (bare name) vs <b style="color:var(--muted)">Plugin</b> (dimmed <span style="font-family:var(--mono)">namespace:</span> prefix).</p>
     <div class="rows" id="r-skills"></div>
     <div class="pager" id="pg-skills"></div>
     <details class="unused-skills" id="unused-skills">
@@ -207,22 +222,19 @@
   </section>
 
   <section id="s-mcp">
-    <div class="shead"><h2>MCP tools</h2><span class="meta" id="m-mcp"></span></div>
-    <p class="snote">Calls into connected servers (Figma, Notion, Databricks…).</p>
+    <div class="shead"><h2>MCP tools</h2><span class="info" tabindex="0"><span class="tip">Calls into connected servers (Figma, Notion, Databricks…).</span></span><span class="meta" id="m-mcp"></span></div>
     <div class="rows" id="r-mcp"></div>
     <div class="pager" id="pg-mcp"></div>
   </section>
 
   <section id="s-proj">
-    <div class="shead"><h2>Where</h2><span class="meta" id="m-proj"></span></div>
-    <p class="snote">Tool calls by project directory (ignores the project filter above).</p>
+    <div class="shead"><h2>Where</h2><span class="info" tabindex="0"><span class="tip">Tool calls by project directory (ignores the project filter above).</span></span><span class="meta" id="m-proj"></span></div>
     <div class="rows" id="r-proj"></div>
     <div class="pager" id="pg-proj"></div>
   </section>
 
   <section id="s-tools">
-    <div class="shead"><h2>Tools</h2><span class="meta" id="m-tools"></span></div>
-    <p class="snote">All built-in tools. MCP calls fold into one <span style="font-family:var(--mono)">(MCP tools)</span> row here — see the MCP tools section above for the breakdown. <span style="font-family:var(--mono)">StructuredOutput</span> is the schema-return tool workflows use.</p>
+    <div class="shead"><h2>Tools</h2><span class="info" tabindex="0"><span class="tip">All built-in tools. MCP calls fold into one <span style="font-family:var(--mono)">(MCP tools)</span> row here — see the MCP tools section above for the breakdown. <span style="font-family:var(--mono)">StructuredOutput</span> is the schema-return tool workflows use.</span></span><span class="meta" id="m-tools"></span></div>
     <div class="rows" id="r-tools"></div>
     <div class="pager" id="pg-tools"></div>
   </section>
@@ -230,6 +242,7 @@
   <footer>
     Sources: ~/.claude/projects/**/*.jsonl + ~/.codex/sessions/**/*.jsonl (full recursion) &nbsp;·&nbsp; generated <span id="gen"></span><br>
     <b style="color:var(--muted)">Main</b> = main-session calls. <b style="color:var(--muted)">Subagent</b> = calls by subagents &amp; workflows you launched. Rebuild: <span style="color:var(--muted)">./build.sh [days]</span>
+    <div style="text-align:center;margin-top:14px"><a href="https://github.com/seolsnow/toolytics">github.com/seolsnow/toolytics</a></div>
   </footer>
 </div>
 

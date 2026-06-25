@@ -47,6 +47,21 @@ Scans are incremental: unchanged transcripts are reused from a per-file cache
 (`scan-state.json`), so re-runs only reparse changed files. That cache is purely
 a speed-up — delete it any time and the next run full-scans and rebuilds it.
 
+## Platform support
+- macOS: full support, including the launchd daily collector.
+- Linux: full support, including a systemd user timer or cron fallback.
+- WSL: use the Linux path. Data, daemon registration, and `~/.toolytics` live
+  inside WSL.
+- Native Windows: manual builds only for now. Use a shell with `bash` and
+  `python3`, run `./build.sh`, and open `~/.toolytics/dashboard.html` yourself
+  if the browser does not auto-open. The plugin hook is fail-open, but it cannot
+  register the daily collector until native Windows scheduling is implemented.
+
+VS Code does not need special integration. toolytics scans the transcript roots
+visible from the process that runs it. In local VS Code terminals that means the
+local home directory; in WSL, Remote SSH, dev containers, or Codespaces it means
+the remote/container home directory, not your host machine's logs.
+
 ## Install
 toolytics scans both `~/.claude/projects` and `~/.codex/sessions`, so one install
 covers Claude Code, Codex, or both. Pick the path that fits your setup.

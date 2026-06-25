@@ -191,7 +191,11 @@ filterable dashboard. (All projects combined, last N days.)
 ## TODO / backlog
 
 **Open**
-- None.
+- Research native Windows support: Task Scheduler registration/removal,
+  browser-open fallback (`cmd /c start` or PowerShell), Git Bash vs PowerShell
+  path handling, hook UX when `bash`/`python3` are missing, and VS Code
+  local/WSL/remote transcript boundaries. Current supported daemon path remains
+  macOS, Linux, and WSL.
 
 **Done (recent)**
 - Codex hook verified in a fresh CLI thread: `/hooks` shows `SessionStart`
