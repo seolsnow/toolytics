@@ -248,12 +248,12 @@ const PROJECTS=[...new Set(ROWS.map(r=>r[COL.proj]))].sort();
 // stable skill roster = disk inventory ∪ every skill EVER used (so it doesn't
 // vanish when a narrow date filter has no calls for it). bare invocation → user.
 const SKILL_UNIVERSE=new Map();
-(DATA.skill_inv||[]).forEach(([leaf,origin,label])=>SKILL_UNIVERSE.set(leaf,{origin,label}));
+(DATA.skill_inv||[]).forEach(([leaf,origin,label,project])=>SKILL_UNIVERSE.set(leaf,{origin,label,project:project||null}));
 ROWS.forEach(r=>{if(r[COL.tool].startsWith('skill:')){
   const full=r[COL.tool].slice(6), leaf=full.split(':').pop(), bare=!full.includes(':');
   const cur=SKILL_UNIVERSE.get(leaf);
-  if(!cur) SKILL_UNIVERSE.set(leaf,{origin:bare?'user':'plugin',label:bare?leaf:full});
-  else if(bare && cur.origin!=='user') SKILL_UNIVERSE.set(leaf,{origin:'user',label:leaf});
+  if(!cur) SKILL_UNIVERSE.set(leaf,{origin:bare?'user':'plugin',label:bare?leaf:full,project:null});
+  else if(bare && cur.origin!=='user') SKILL_UNIVERSE.set(leaf,{origin:'user',label:leaf,project:cur.project});
 }});
 
 const allDates=ROWS.map(r=>r[COL.date]).sort();
@@ -431,8 +431,9 @@ function paint(){
   const skCount={};
   rows.forEach(r=>{if(r[COL.tool].startsWith('skill:')){const leaf=r[COL.tool].slice(6).split(':').pop();
     skCount[leaf]=(skCount[leaf]||0)+r[COL.n];}});
-  let skillRows=[...SKILL_UNIVERSE.entries()].map(([leaf,inf])=>
-    ({label:inf.label,origin:inf.origin,count:skCount[leaf]||0}));
+  let skillRows=[...SKILL_UNIVERSE.entries()]
+    .filter(([leaf,inf])=>inf.project==null||S.projs.has(inf.project))  // project-local skills hide under other project filters
+    .map(([leaf,inf])=>({label:inf.label,origin:inf.origin,count:skCount[leaf]||0}));
   if(S.skOrigin!=='all') skillRows=skillRows.filter(s=>s.origin===S.skOrigin);
   skillRows.sort((a,b)=>b.count-a.count || a.label.localeCompare(b.label));
   const barOf=(v,mx)=>{const lmx=Math.log(mx+1),lmn=Math.log(2);

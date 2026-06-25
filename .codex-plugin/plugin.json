@@ -1,6 +1,6 @@
 {
   "name": "toolytics",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "description": "Local Claude Code and Codex tool-usage dashboard with a daily collector",
   "author": {
     "name": "seolsnow"

@@ -96,6 +96,23 @@ with tempfile.TemporaryDirectory() as home:
                        ('thread-agent.jsonl', thread_agent_rows)]:
         with open(os.path.join(root, name), 'w') as fh:
             fh.writelines(json.dumps(row) + '\n' for row in rows)
+    # Claude transcript: a user-typed /slash skill-command arrives as STRING
+    # content with no Skill tool_use -> counted as skill:<name> iff it maps to a
+    # disk skill; a builtin like /clear must be ignored (no row). A GLOBAL skill
+    # (~/.claude/skills) is tagged project=None; a PROJECT-LOCAL skill
+    # (<cwd>/.claude/skills) is tagged with its owning project even when never used.
+    pcwd = os.path.join(home, 'proj-a')
+    os.makedirs(os.path.join(home, '.claude', 'skills', 'mytool'))
+    open(os.path.join(home, '.claude', 'skills', 'mytool', 'SKILL.md'), 'w').close()
+    os.makedirs(os.path.join(pcwd, '.claude', 'skills', 'projskill'))
+    open(os.path.join(pcwd, '.claude', 'skills', 'projskill', 'SKILL.md'), 'w').close()
+    proj = os.path.join(home, '.claude', 'projects', '-proj')
+    os.makedirs(proj)
+    with open(os.path.join(proj, 'sess.jsonl'), 'w') as fh:
+        for cmd in ('/mytool', '/clear'):
+            fh.write(json.dumps({'timestamp': '2026-06-25T02:00:00Z', 'type': 'user',
+                'cwd': pcwd, 'message': {'role': 'user',
+                'content': '<command-name>%s</command-name>\n<command-args></command-args>' % cmd}}) + '\n')
     out = os.path.join(home, 'out')
     os.makedirs(out)
     with open(os.path.join(out, 'history.csv'), 'w') as fh:
@@ -106,8 +123,15 @@ with tempfile.TemporaryDirectory() as home:
         got = list(csv.DictReader(fh))
     assert {(r['runtime'], r['triggered_by'], r['tool']) for r in got} == {
         ('claude', 'main', 'Read'), ('codex', 'main', 'exec_command'),
-        ('codex', 'agent', 'exec'), ('codex', 'agent', 'view_image')}
+        ('codex', 'agent', 'exec'), ('codex', 'agent', 'view_image'),
+        ('claude', 'main', 'skill:mytool')}   # /mytool counted, /clear ignored
     dashboard = open(os.path.join(out, 'dashboard.html')).read()
+    # project-scoped skill visibility: a never-used project-local skill enters the
+    # roster tagged with its project; the global skill stays project=None; and the
+    # universe is project-filtered client-side (not just the counts).
+    assert '["projskill","user","projskill","proj-a"]' in dashboard, "project-local skill not tagged with its project"
+    assert '["mytool","user","mytool",null]' in dashboard, "global skill should be project=None"
+    assert 'inf.project==null||S.projs.has(inf.project)' in dashboard, "skill universe is not project-filtered"
     assert 'id="f-runtime"' in dashboard, "dashboard has no runtime filter"
     assert 'function passTool(r)' in dashboard, "dashboard does not filter six-field tool rows"
 
@@ -130,7 +154,7 @@ VIEW_DAYS="${1:-30}"
 mkdir -p "$OUT"
 
 python3 - "$VIEW_DAYS" "$SRC" "$OUT" <<'PY'
-import sys, os, glob, json, csv, datetime, collections
+import sys, os, glob, json, csv, datetime, collections, re
 
 view_days = int(sys.argv[1]); src, out = sys.argv[2], sys.argv[3]
 HOME = os.path.expanduser('~')
@@ -259,11 +283,35 @@ def first_cwd(fs):
             if o.get('cwd'): return o['cwd']
     return None
 
-labels = {}
+labels = {}; proj_cwds = {}        # label -> a real cwd, for project-local skill scan
 for d, fs in bydir.items():
     mains = [f for f in fs if '/subagents/' not in f] or fs
     cwd = first_cwd(mains) or first_cwd(fs)
     labels[d] = label_from_cwd(cwd) if cwd else label_from_dir(d)
+    if cwd: proj_cwds.setdefault(labels[d], cwd)
+
+# --- skill inventory on disk (so never-invoked skills still show, count 0).
+#     Built before the scan so user-typed /slash skill-commands can be matched. ---
+seen = set(); skill_inv = []   # [leaf, origin, label, project]  (project=None => global)
+for f in sorted(glob.glob(os.path.expanduser('~/.claude/skills/*/SKILL.md'))):
+    leaf = os.path.basename(os.path.dirname(f))
+    if leaf not in seen:
+        seen.add(leaf); skill_inv.append([leaf, 'user', leaf, None])
+for f in sorted(glob.glob(os.path.expanduser('~/.claude/plugins/**/skills/*/SKILL.md'), recursive=True)):
+    leaf = os.path.basename(os.path.dirname(f))
+    if leaf in seen: continue
+    pl = plugin_from_path(f)
+    seen.add(leaf); skill_inv.append([leaf, 'plugin', (pl + ':' + leaf) if pl else leaf, None])
+# project-local skills (<cwd>/.claude/skills) tagged with their owning project, so the
+# dashboard shows them (count 0) even if never invoked AND hides them under a different
+# project filter. Global skills above are project=None (shown everywhere). Same-leaf as a
+# global skill -> global wins (leaf-collision, deferred).
+for label, cwd in proj_cwds.items():
+    for f in sorted(glob.glob(os.path.join(cwd, '.claude', 'skills', '*', 'SKILL.md'))):
+        leaf = os.path.basename(os.path.dirname(f))
+        if leaf in seen: continue
+        seen.add(leaf); skill_inv.append([leaf, 'user', leaf, label])
+skill_leaves = {r[0] for r in skill_inv}   # leaf set for /slash skill-command matching
 
 scan   = collections.Counter()   # (date, runtime, by, project, tool) -> count
 inj    = collections.Counter()   # (date, by, project, source) -> firings
@@ -289,6 +337,15 @@ for f in files:
         msg = o.get('message')
         if not isinstance(msg, dict): continue
         c = msg.get('content')
+        if isinstance(c, str):
+            # user-typed /slash skill-command: no Skill tool_use is emitted, so
+            # this command-name is its only trace. Count only commands that map to
+            # a known skill (builtins like /clear,/model are ignored); reuse the
+            # skill:<name> label of the model path so the two paths merge.
+            m = re.search(r'<command-name>/?([^<\s]+)</command-name>', c)
+            if m and m.group(1).split(':')[-1] in skill_leaves:
+                scan[(d, 'claude', by, proj, 'skill:' + m.group(1))] += 1
+            continue
         if not isinstance(c, list): continue
         for b in c:
             if isinstance(b, dict) and b.get('type') == 'tool_use':
@@ -375,18 +432,6 @@ inj_rows = merge_write(os.path.join(out, 'injects.csv'),
     ['date', 'triggered_by', 'project', 'source', 'count'],
     load(os.path.join(out, 'injects.csv'), 5), inj)
 json.dump(LEARNED, open(LEARN_PATH, 'w'), indent=0, sort_keys=True)  # persist learned attributions
-
-# --- skill inventory on disk (so never-invoked skills still show, count 0) ---
-seen = set(); skill_inv = []   # [leaf, origin, label]
-for f in sorted(glob.glob(os.path.expanduser('~/.claude/skills/*/SKILL.md'))):
-    leaf = os.path.basename(os.path.dirname(f))
-    if leaf not in seen:
-        seen.add(leaf); skill_inv.append([leaf, 'user', leaf])
-for f in sorted(glob.glob(os.path.expanduser('~/.claude/plugins/**/skills/*/SKILL.md'), recursive=True)):
-    leaf = os.path.basename(os.path.dirname(f))
-    if leaf in seen: continue
-    pl = plugin_from_path(f)
-    seen.add(leaf); skill_inv.append([leaf, 'plugin', (pl + ':' + leaf) if pl else leaf])
 
 # --- 3. build dashboard from full history; default view = trailing VIEW_DAYS ---
 all_dates = sorted({r[0] for r in tool_rows})

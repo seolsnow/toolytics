@@ -16,6 +16,17 @@ filterable dashboard. (All projects combined, last N days.)
 - **Tidy table schema**: `date, runtime(claude|codex), triggered_by(main|agent), project, tool, count`.
   Skill calls go into `tool` as `skill:<name>`; MCP keeps the raw
   `mcp__server__method` form.
+- **Skill invocation has two transcript shapes, both counted under `skill:<name>`**:
+  model-invoked = a `Skill` tool_use block; user-typed `/slash` skill-command =
+  a string-content `<command-name>` user message with **no** tool_use. The two
+  are mutually exclusive per action (a `/slash` invoke emits no `Skill` call), so
+  counting both can't double-count, and reusing the `skill:` label merges them.
+  Only `<command-name>`s whose leaf is a real on-disk skill are counted —
+  builtins (`/clear`, `/model`, `/plugin`, `/reload-skills`…) are ignored, so
+  generic slash commands stay out (intentional: they're session noise, not tool
+  use). This is why `skill_inv` is built *before* the scan loop (the leaf set is
+  the match table). Codex skills load natively and leave no `/slash` marker → not
+  applicable there.
 - **Reproduce/build**: `./build.sh [VIEW_DAYS]` (default 30) → full scan →
   refresh cumulative DBs → build dashboard → auto-open browser.
   - Output location: `~/.toolytics/` (change via env `TOOLYTICS_HOME`).
@@ -77,10 +88,13 @@ filterable dashboard. (All projects combined, last N days.)
   `Bash(bash *toolytics*build.sh*)` in settings.
 - **Rescan time**: full cold scan ~3s (currently ~1700 files). Per the ponytail
   comment, switch to mtime-incremental if it gets slow.
-- **Skill roster**: disk inventory (`~/.claude/skills` + `plugins`) ∪ every skill
-  ever used in the full history → zero-count skills always show (`DATA.skill_inv`).
-  Pinned client-side as `SKILL_UNIVERSE`; only the counts react to the filter
-  window. user/plugin toggle (presence of a colon; a bare name prefers user).
+- **Skill roster**: disk inventory (`~/.claude/skills` + `plugins` +
+  per-project `<cwd>/.claude/skills`) ∪ every skill ever used in the full history →
+  zero-count skills always show (`DATA.skill_inv`). Pinned client-side as
+  `SKILL_UNIVERSE`; the counts react to the filter window and the universe itself is
+  project-filtered (project-local skills hide under a different project — see
+  Project-scoped skill visibility below). user/plugin toggle (presence of a colon; a
+  bare name prefers user).
 - **Scope — tool use only**: toolytics counts *tool calls*, not tokens or cost.
   Token/$-spend tracking was deliberately removed (2026-06) — it's out of scope
   for a tool-usage dashboard. Don't re-add a tokens/price/`API value` section.
@@ -126,9 +140,11 @@ filterable dashboard. (All projects combined, last N days.)
   Codex call payload types, the inject reverse-mapping
   (idempotent · preserves rotated dates · clears covered-but-empty dates), the
   inject reverse-mapping (exact-match on command·statusMessage), the learned
-  cache (no regression to a basename after disk skew) + opt-in alias seeding, and
-  that all three plugin manifests agree on `version`. A regression guard for the
-  non-trivial logic.
+  cache (no regression to a basename after disk skew) + opt-in alias seeding,
+  the `/slash` skill-command capture (a string-content `<command-name>` mapping
+  to a disk skill becomes a `skill:` row; a builtin like `/clear` is ignored),
+  and that all three plugin manifests agree on `version`. A regression guard for
+  the non-trivial logic.
 - **Project labels**: default is the home-relative path (`hsc/rain/foo`). The
   personal hardcoded convention (`hsc/` trim) was removed → safe to distribute. To
   shorten, use only the `TOOLYTICS_TRIM="hsc,work"` env (comma-separated leading
@@ -136,17 +152,15 @@ filterable dashboard. (All projects combined, last N days.)
 - **Remaining unfixed (low-impact, deliberately deferred)**: skill leaf-basename
   collision (same-named user/plugin counts get merged) — rare and fiddly to fix
   well, so deferred.
-- **TODO — project-scoped skill visibility (Skills section)**: `SKILL_UNIVERSE` is
-  global and the disk inventory only scans `~/.claude/skills` + `plugins`, never a
-  project-local `.claude/skills`. Two wanted behaviors not yet met:
-  1. A skill should show **even if never used** (zero-count) — today a
-     project-scoped skill only enters the universe if it was invoked at least once
-     (the inventory scan misses project-local dirs).
-  2. A skill scoped to *another* project should **not** show when you filter to a
-     different project — today the universe is project-agnostic, so a skill used
-     only in project A still appears (count 0, "unused" section) under project B.
-  Fix shape: scan project-local `.claude/skills` into `skill_inv` tagged with their
-  owning project, and project-filter the skill universe (not just the counts).
+- **Project-scoped skill visibility (done)**: `skill_inv` is now `[leaf, origin,
+  label, project]`. Global skills (`~/.claude/skills` + plugins) carry
+  `project=None`; project-local skills (`<cwd>/.claude/skills`, scanned per project
+  via the `proj_cwds` map built in the labels loop) are tagged with their owning
+  project. The dashboard project-filters the skill **universe** (not just the
+  counts): `inf.project==null || S.projs.has(inf.project)`. → a never-invoked
+  project-local skill shows (count 0) under its own project, and a skill scoped to
+  another project is hidden when you filter elsewhere. Leaf-collision still defers
+  to global (a project-local skill sharing a global name is skipped).
 - **Dashboard UI**: 20-per-page pagination on every section (pad to 20 rows only
   when multi-page); pinned rows (Skills' inject pins + divider) render above the
   slice and **don't count toward the page budget**, so page 1 shows a full 20
@@ -161,19 +175,24 @@ filterable dashboard. (All projects combined, last N days.)
 ## TODO / backlog
 
 **Open**
-1. **Pending version bump** — bump 0.1.7 → next with `./bump-version.sh X.Y.Z`,
-   then reinstall the plugin so `/toolytics` (which runs the versioned plugin-cache
-   copy) picks up the current template/build changes. Deferred deliberately to
-   bundle several changes into one bump.
-2. **(optional) Public Codex install** — `.agents/plugins/marketplace.json` uses a
-   local `./` source (clone-only). ponytail uses a GitHub URL source
-   (`{source:"url", url:…git, ref:"main"}`) so anyone can install. Adopt only if
-   toolytics should be publicly installable via Codex, not just from a clone.
-3. **(optional) Verify Codex hook fires** — the explicit `"hooks"` key is now in
+1. **Reinstall after the 0.1.9 bump** — version is bumped to 0.1.9 (covers `/slash`
+   skill-command capture, project-scoped skill visibility, Codex URL marketplace
+   source). Still need to reinstall the plugin so `/toolytics` (which runs the
+   versioned plugin-cache copy) picks up the new template/build — the cache still
+   holds 0.1.8 until then.
+2. **(optional) Verify Codex hook fires** — the explicit `"hooks"` key is now in
    `.codex-plugin/plugin.json`; confirm once via `/hooks` in a real Codex thread
    that the toolytics SessionStart hook shows up for trust.
 
 **Done (recent)**
+- Public Codex install: `.agents/plugins/marketplace.json` switched from a local
+  `./` source to a GitHub URL source (`{source:"url", url:…/toolytics.git,
+  ref:"main"}`, ponytail-style) → installable without a clone (needs the repo
+  pushed to GitHub `main`).
+- Project-scoped skill visibility (see the bullet above) — `skill_inv` 4th field +
+  project-filtered universe; `--selfcheck` guards the tagging and the filter.
+- `/slash` skill-command capture — user-typed `/skill` invocations (no `Skill`
+  tool_use) now counted under `skill:<name>`; builtins ignored; `--selfcheck` guard.
 - Token / cost / "API value" tracking **removed** — out of scope for a tool-use
   dashboard (build.sh, template, tokens.csv, docs, self-check all stripped).
 - Distribution study (ponytail + superpowers) → produced the items above.
@@ -181,8 +200,8 @@ filterable dashboard. (All projects combined, last N days.)
 - Codex hooks declared explicitly; Claude marketplace `$schema` added.
 - Direct/Delegated → **Main / Subagent**. Filter tool → Skills (already worked).
 
-(Older, still-open ideas live in their own bullets above: project-scoped skill
-visibility, skill leaf-basename collision.)
+(Older, still-open idea lives in its own bullet above: skill leaf-basename
+collision.)
 
 ## Artifacts
 - `build.sh` — scan→accumulate→build→open pipeline (reusable).
@@ -199,8 +218,9 @@ visibility, skill leaf-basename collision.)
 - `.codex-plugin/plugin.json` — Codex plugin manifest; declares `"hooks":
   "./hooks/hooks.json"` explicitly (matches ponytail/superpowers) so the
   SessionStart hook is wired without relying on auto-discovery.
-- `.agents/plugins/marketplace.json` — repository-scoped Codex marketplace;
-  its `./` local source is this repository's plugin root.
+- `.agents/plugins/marketplace.json` — repository-scoped Codex marketplace; uses a
+  GitHub URL source (`https://github.com/seolsnow/toolytics.git`, ref `main`) so it
+  installs without a clone (requires the repo pushed to `main`).
 - `skills/toolytics/SKILL.md` — Codex dashboard workflow.
 - `hooks/hooks.json` — shared Claude Code and Codex SessionStart self-install
   guard. Codex requires explicit hook trust through `/hooks`.
