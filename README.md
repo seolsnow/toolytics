@@ -3,6 +3,10 @@
 A self-contained dashboard for **your own Claude Code and Codex usage** — which
 tools and MCP methods you actually reach for, and how often.
 
+![toolytics dashboard — what the agent actually did](assets/dashboard-overview.png)
+
+![toolytics dashboard — skills and MCP tools](assets/dashboard-skills.png)
+
 ## What it does (and why you'd want it)
 
 Claude Code and Codex log sessions locally, but neither shows you the
