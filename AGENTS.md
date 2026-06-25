@@ -175,16 +175,18 @@ filterable dashboard. (All projects combined, last N days.)
 ## TODO / backlog
 
 **Open**
-1. **Reinstall after the 0.1.9 bump** — version is bumped to 0.1.9 (covers `/slash`
-   skill-command capture, project-scoped skill visibility, Codex URL marketplace
-   source). Still need to reinstall the plugin so `/toolytics` (which runs the
-   versioned plugin-cache copy) picks up the new template/build — the cache still
-   holds 0.1.8 until then.
-2. **(optional) Verify Codex hook fires** — the explicit `"hooks"` key is now in
-   `.codex-plugin/plugin.json`; confirm once via `/hooks` in a real Codex thread
-   that the toolytics SessionStart hook shows up for trust.
+- None.
 
 **Done (recent)**
+- Codex hook verified in a fresh CLI thread: `/hooks` shows `SessionStart`
+  with `5` installed / `5` active hooks, and the detailed SessionStart list
+  includes `Plugin - toolytics@toolytics` running
+  `toolytics/0.1.9/install-daemon.sh ensure`; trust status is `Trusted`.
+- Codex plugin reinstalled after the 0.1.9 bump: `codex plugin marketplace add .`
+  repaired a stale marketplace source from the deleted
+  `.worktrees/codex-plugin-packaging` path to this repo, and
+  `codex plugin add toolytics@toolytics` installed/enabled 0.1.9. Verified with
+  `codex plugin list` and a non-opening installed-cache build.
 - Public Codex install: `.agents/plugins/marketplace.json` switched from a local
   `./` source to a GitHub URL source (`{source:"url", url:…/toolytics.git,
   ref:"main"}`, ponytail-style) → installable without a clone (needs the repo
