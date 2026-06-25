@@ -23,8 +23,7 @@ Everything is filterable in the browser (by runtime, direct/delegated, project,
 date range, tool search) — the dashboard is one self-contained HTML file with
 the data inlined, so you can open or archive it offline. If you share that file,
 treat it as local usage metadata: project labels and tool/skill/plugin counts
-are embedded in the HTML. Injection and skill-inventory data currently come from
-Claude Code only.
+are embedded in the HTML.
 
 It also **outlives log cleanup.** Claude Code deletes transcripts after
 ~30 days; toolytics keeps a cumulative CSV and (optionally) runs a daily
@@ -70,6 +69,17 @@ VS Code does not need special integration. toolytics scans the transcript roots
 visible from the process that runs it. In local VS Code terminals that means the
 local home directory; in WSL, Remote SSH, dev containers, or Codespaces it means
 the remote/container home directory, not your host machine's logs.
+
+## Known limitations
+- The native Windows scheduler path requires Git Bash/MSYS/Cygwin. There is no
+  PowerShell or `cmd.exe` installer.
+- WSL, Remote SSH, dev containers, and Codespaces scan their own home directory,
+  not the host machine's transcript roots.
+- Injection counts and the installed-skill roster come from Claude Code
+  transcripts and disk layout. Codex tool calls are counted, but Codex native
+  skill loading does not expose the same skill-inventory/injection records.
+- Skills are keyed by leaf name. If two installed skills share the same leaf
+  name, their `skill:<name>` counts are merged.
 
 ## Install
 toolytics scans both `~/.claude/projects` and `~/.codex/sessions`, so one install
