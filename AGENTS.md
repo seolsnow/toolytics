@@ -62,10 +62,11 @@ filterable dashboard. (All projects combined, last N days.)
   preserves a date "if a scan caught it at least once"). → `install-daemon.sh`
   registers a per-user OS scheduler to run `TOOLYTICS_OPEN=0 build.sh` once a day,
   guaranteeing collection before cleanup: macOS = launchd LaunchAgent,
-  Linux = systemd `--user` timer (`Persistent=true`), cron if systemd is absent.
-  **The plist/unit is generated at install time** — build path, PATH, and home are
-  all derived from `$HOME` · `command -v python3` · the script's own location
-  (zero hardcoded strings, same self-configuring philosophy as inject
+  Linux = systemd `--user` timer (`Persistent=true`) or cron, native Windows =
+  per-user Scheduled Task via `schtasks` from Git Bash/MSYS/Cygwin.
+  **The scheduler definition is generated at install time** — build path, PATH,
+  and home are all derived from `$HOME` · `command -v python3` · the script's own
+  location (zero hardcoded strings, same self-configuring philosophy as inject
   attribution). It's idempotent, so rerunning = bootout→bootstrap refresh; the
   `ensure` subcommand is a no-op if already installed (self-heal). The Claude
   Code and Codex plugins call this from a trusted SessionStart hook via
@@ -77,11 +78,13 @@ filterable dashboard. (All projects combined, last N days.)
   `install-daemon.sh` themselves once; it is idempotent. Data *collection* needs
   no install — `build.sh` scans both transcript roots regardless of how it was
   invoked. macOS is live-verified (exit 0); the Linux systemd `--user` timer
-  path is verified on WSL2. **All three backends write run output to
+  path is verified on WSL2; native Windows is verified on Windows 11 Git Bash.
+  **All scheduler backends write run output to
   `~/.toolytics/scheduler.log`**: launchd via `StandardOutPath`/`StandardErrorPath`,
   cron via `>> "$LOG" 2>&1`, and systemd via `StandardOutput=append:` /
   `StandardError=append:` on the service (without those directives systemd would
-  route output to the journal instead, not the log file).
+  route output to the journal instead, not the log file), and Windows via the
+  generated `run-daemon.cmd` wrapper redirecting stdout/stderr to the same log.
 - **Permission prompts & expected UX (configuration-dependent)**: toolytics does
   not alter Claude Code permissions or try to grant itself access. The
   SessionStart hook and the `/toolytics` Bash command can be approved or
@@ -191,13 +194,14 @@ filterable dashboard. (All projects combined, last N days.)
 ## TODO / backlog
 
 **Open**
-- Research native Windows support: Task Scheduler registration/removal,
-  browser-open fallback (`cmd /c start` or PowerShell), Git Bash vs PowerShell
-  path handling, hook UX when `bash`/`python3` are missing, and VS Code
-  local/WSL/remote transcript boundaries. Current supported daemon path remains
-  macOS, Linux, and WSL.
+- Skill leaf-basename collision (same-named user/plugin/project-local skills
+  merge under one `skill:<name>` row). Rare and low-impact; fix only if it
+  appears in real use.
 
 **Done (recent)**
+- Native Windows support: `build.sh` normalizes Windows paths and opens the
+  dashboard via `cmd start`; `install-daemon.sh` registers/removes/repairs a
+  per-user Windows Scheduled Task from Git Bash/MSYS/Cygwin.
 - Codex hook verified in a fresh CLI thread: `/hooks` shows `SessionStart`
   with `5` installed / `5` active hooks, and the detailed SessionStart list
   includes `Plugin - toolytics@toolytics` running
@@ -222,15 +226,12 @@ filterable dashboard. (All projects combined, last N days.)
 - Codex hooks declared explicitly; Claude marketplace `$schema` added.
 - Direct/Delegated → **Main / Subagent**. Filter tool → Skills (already worked).
 
-(Older, still-open idea lives in its own bullet above: skill leaf-basename
-collision.)
-
 ## Artifacts
 - `build.sh` — scan→accumulate→build→open pipeline (reusable).
 - `dashboard.template.html` — dashboard template (data slot empty, the source).
-- `install-daemon.sh` — per-OS daily collector scheduler installer (macOS launchd /
-  Linux systemd·cron, generated dynamically, idempotent; `install` | `ensure` |
-  `--remove`).
+- `install-daemon.sh` — per-OS daily collector scheduler installer (macOS
+  launchd / Linux systemd·cron / Windows Scheduled Task, generated dynamically,
+  idempotent; `install` | `ensure` | `--remove`).
 - `bump-version.sh` — sets the version in all three manifests at once
   (`./bump-version.sh X.Y.Z`); `build.sh --selfcheck` asserts they stay in sync.
 - `.claude-plugin/plugin.json` — the `toolytics` plugin manifest.
