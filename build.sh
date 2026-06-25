@@ -135,7 +135,80 @@ with tempfile.TemporaryDirectory() as home:
     assert 'id="f-runtime"' in dashboard, "dashboard has no runtime filter"
     assert 'function passTool(r)' in dashboard, "dashboard does not filter six-field tool rows"
 
-# 8. plugin manifests agree on version (bump-version.sh keeps them in sync).
+# 8. incremental scan: the per-file cache must not drop an unchanged sibling's
+# count. Two Codex files in ONE (date,runtime,by,project) group; appending to
+# only one must still re-sum the other's CACHED count -- the exact undercount a
+# naive changed-files-only scan would cause.
+with tempfile.TemporaryDirectory() as home:
+    root = os.path.join(home, '.codex', 'sessions', '2026', '06', '25'); os.makedirs(root)
+    def codex_calls(path, n):
+        rows = [{'timestamp': '2026-06-25T03:00:00Z', 'type': 'session_meta',
+                 'payload': {'cwd': home, 'thread_source': 'user', 'source': 'cli'}}]
+        rows += [{'timestamp': '2026-06-25T03:01:0%dZ' % i, 'type': 'response_item',
+                  'payload': {'type': 'function_call', 'name': 'exec_command'}} for i in range(n)]
+        with open(path, 'w') as fh: fh.writelines(json.dumps(r) + '\n' for r in rows)
+    a, b = os.path.join(root, 'a.jsonl'), os.path.join(root, 'b.jsonl')
+    codex_calls(a, 1); codex_calls(b, 1)
+    out = os.path.join(home, 'out'); os.makedirs(out)
+    env = {**os.environ, 'HOME': home, 'TOOLYTICS_HOME': out, 'TOOLYTICS_OPEN': '0'}
+    def exec_total():
+        with open(os.path.join(out, 'history.csv')) as fh:
+            return sum(int(r['count']) for r in csv.DictReader(fh) if r['tool'] == 'exec_command')
+    subprocess.run([script, '1'], check=True, env=env)
+    assert os.path.exists(os.path.join(out, 'scan-state.json')), "scan-state.json not written"
+    assert exec_total() == 2, "initial incremental count != 2"
+    subprocess.run([script, '1'], check=True, env=env)               # unchanged re-run
+    assert exec_total() == 2, "unchanged re-run changed the count"
+    codex_calls(b, 2)                                                 # only b grows: 1 -> 2 calls
+    subprocess.run([script, '1'], check=True, env=env)
+    assert exec_total() == 3, "appending to one file dropped the unchanged sibling's cached count"
+
+# 9. incremental scan: if Claude's current project label changes, cached rows
+# must not keep using the old materialized project label.
+with tempfile.TemporaryDirectory() as home:
+    root = os.path.join(home, '.claude', 'projects', '-mixed'); os.makedirs(root)
+    def claude_call(path, cwd, tool):
+        with open(path, 'w') as fh:
+            fh.write(json.dumps({'timestamp': '2026-06-25T04:00:00Z', 'type': 'user',
+                'cwd': cwd, 'message': {'role': 'user',
+                'content': [{'type': 'tool_use', 'name': tool}]}}) + '\n')
+    first = os.path.join(root, '0.jsonl')
+    second = os.path.join(root, '1.jsonl')
+    claude_call(first, os.path.join(home, 'old-label'), 'Read')
+    claude_call(second, os.path.join(home, 'new-label'), 'Edit')
+    out = os.path.join(home, 'out'); os.makedirs(out)
+    env = {**os.environ, 'HOME': home, 'TOOLYTICS_HOME': out, 'TOOLYTICS_OPEN': '0'}
+    subprocess.run([script, '1'], check=True, env=env)
+    os.remove(first)
+    subprocess.run([script, '1'], check=True, env=env)
+    with open(os.path.join(out, 'history.csv')) as fh:
+        got = {(r['project'], r['tool']) for r in csv.DictReader(fh)}
+    assert ('new-label', 'Edit') in got, "cached Claude row kept an old project label after labels changed"
+
+# 10. incremental scan: a malformed-but-valid cache entry should be ignored and
+# reparsed, not crash the whole build.
+with tempfile.TemporaryDirectory() as home:
+    root = os.path.join(home, '.codex', 'sessions', '2026', '06', '25'); os.makedirs(root)
+    f = os.path.join(root, 'bad-cache.jsonl')
+    with open(f, 'w') as fh:
+        fh.write(json.dumps({'timestamp': '2026-06-25T05:00:00Z', 'type': 'session_meta',
+            'payload': {'cwd': home, 'thread_source': 'user', 'source': 'cli'}}) + '\n')
+        fh.write(json.dumps({'timestamp': '2026-06-25T05:00:01Z', 'type': 'response_item',
+            'payload': {'type': 'function_call', 'name': 'exec_command'}}) + '\n')
+    out = os.path.join(home, 'out'); os.makedirs(out)
+    env = {**os.environ, 'HOME': home, 'TOOLYTICS_HOME': out, 'TOOLYTICS_OPEN': '0'}
+    subprocess.run([script, '1'], check=True, env=env)
+    state_path = os.path.join(out, 'scan-state.json')
+    state = json.load(open(state_path))
+    stt = os.stat(f)
+    state['files'][f] = {'size': stt.st_size, 'mtime_ns': stt.st_mtime_ns}
+    json.dump(state, open(state_path, 'w'))
+    subprocess.run([script, '1'], check=True, env=env)
+    with open(os.path.join(out, 'history.csv')) as fh:
+        got = [r for r in csv.DictReader(fh) if r['tool'] == 'exec_command']
+    assert sum(int(r['count']) for r in got) == 1, "malformed cache entry was not rebuilt correctly"
+
+# 11. plugin manifests agree on version (bump-version.sh keeps them in sync).
 repo = os.path.dirname(os.path.abspath(sys.argv[1]))
 vers = {}
 for rel, path in [('.claude-plugin/plugin.json', ('version',)),
@@ -268,8 +341,7 @@ def attrib_inject(a):
         LEARNED[cmd] = lab
     return lab
 
-# --- 1. full scan of everything currently on disk (no time window) ---
-# ponytail: full rescan each run (~2s now). If files balloon, switch to mtime-incremental.
+# --- 1. discover everything currently on disk (no time window) ---
 files = glob.glob(os.path.expanduser('~/.claude/projects/**/*.jsonl'), recursive=True)
 bydir = collections.defaultdict(list)
 for f in files:
@@ -313,46 +385,38 @@ for label, cwd in proj_cwds.items():
         seen.add(leaf); skill_inv.append([leaf, 'user', leaf, label])
 skill_leaves = {r[0] for r in skill_inv}   # leaf set for /slash skill-command matching
 
-scan   = collections.Counter()   # (date, runtime, by, project, tool) -> count
-inj    = collections.Counter()   # (date, by, project, source) -> firings
-tool_scanned_groups = set()      # (date,runtime,by,project) groups present on disk -> scan is authoritative
-claude_scanned_groups = set()    # (date,by,project), for the Claude-only inject table
-                                 # Both are finer than whole-date: a date with project A still on disk but
-                                 # project B's logs deleted won't wipe B's accumulated rows.
-for f in files:
-    by   = 'agent' if '/subagents/' in f else 'main'
-    proj = labels[f.split('/projects/')[1].split('/')[0]]
-    for line in open(f, errors='ignore'):
-        try: o = json.loads(line)
-        except Exception: continue
-        t = pts(o.get('timestamp', '') or '')
-        if not t: continue
-        d = t.date().isoformat()
-        tool_scanned_groups.add((d, 'claude', by, proj))
-        claude_scanned_groups.add((d, by, proj))
-        if o.get('type') == 'attachment':
-            isrc = attrib_inject(o.get('attachment') or {})
-            if isrc: inj[(d, by, proj, isrc)] += 1
-            continue
-        msg = o.get('message')
-        if not isinstance(msg, dict): continue
-        c = msg.get('content')
-        if isinstance(c, str):
-            # user-typed /slash skill-command: no Skill tool_use is emitted, so
-            # this command-name is its only trace. Count only commands that map to
-            # a known skill (builtins like /clear,/model are ignored); reuse the
-            # skill:<name> label of the model path so the two paths merge.
-            m = re.search(r'<command-name>/?([^<\s]+)</command-name>', c)
-            if m and m.group(1).split(':')[-1] in skill_leaves:
-                scan[(d, 'claude', by, proj, 'skill:' + m.group(1))] += 1
-            continue
-        if not isinstance(c, list): continue
-        for b in c:
-            if isinstance(b, dict) and b.get('type') == 'tool_use':
-                n = b.get('name', '?')
-                if n == 'Skill':
-                    n = 'skill:' + str((b.get('input') or {}).get('skill', '?'))
-                scan[(d, 'claude', by, proj, n)] += 1
+# --- incremental per-file aggregate cache (scan-state.json) ------------------
+# Re-parsing every JSONL each run doesn't scale once a user retains many logs.
+# Cache each file's per-file aggregate keyed by (size, mtime_ns): unchanged files
+# are reused without parsing, yet their cached counts still feed the run-level
+# aggregate -- so replace-by-group never drops an unchanged sibling's rows when
+# another file in the same group changes. It's a perf cache, not a source of
+# truth: delete scan-state.json and the next run full-scans and rebuilds it.
+CACHE_VERSION = 1
+signature = {'cache_version': CACHE_VERSION, 'trim': TRIM,
+             'claude_labels': labels,
+             'skill_leaves': sorted(skill_leaves),
+             'inject_resolved': DISK_RESOLVED, 'inject_fallback': DISK_FALLBACK,
+             'inject_alias': ALIAS}                      # any change here -> full rescan
+STATE_PATH = os.path.join(out, 'scan-state.json')
+try:
+    _state = json.load(open(STATE_PATH))
+    _files_cache = _state.get('files')
+    cache = _files_cache if _state.get('signature') == signature and isinstance(_files_cache, dict) else {}
+except Exception:                                        # missing/corrupt/incompatible
+    cache = {}
+
+def valid_cache_entry(ent, stt):
+    def rows(xs, n):
+        return isinstance(xs, list) and all(isinstance(r, list) and len(r) == n
+            and all(isinstance(c, str) for c in r[:-1]) and isinstance(r[-1], int) for r in xs)
+    def groups(xs, n):
+        return isinstance(xs, list) and all(isinstance(r, list) and len(r) == n
+            and all(isinstance(c, str) for c in r) for r in xs)
+    return (isinstance(ent, dict)
+        and ent.get('size') == stt.st_size and ent.get('mtime_ns') == stt.st_mtime_ns
+        and rows(ent.get('tool'), 6) and rows(ent.get('inj'), 5)
+        and groups(ent.get('tg'), 4) and groups(ent.get('cg'), 3))
 
 def codex_context(path):
     by, cwd = 'main', None
@@ -371,20 +435,82 @@ def codex_context(path):
             cwd = cwd or payload.get('cwd')
     return by, label_from_cwd(cwd) if cwd else 'codex'
 
-for f in glob.glob(os.path.expanduser('~/.codex/sessions/**/*.jsonl'), recursive=True):
+def scan_claude_file(f):
+    by   = 'agent' if '/subagents/' in f else 'main'
+    proj = labels[f.split('/projects/')[1].split('/')[0]]
+    tool = collections.Counter(); injc = collections.Counter(); tg = set(); cg = set()
+    for line in open(f, errors='ignore'):
+        try: o = json.loads(line)
+        except Exception: continue
+        t = pts(o.get('timestamp', '') or '')
+        if not t: continue
+        d = t.date().isoformat()
+        tg.add((d, 'claude', by, proj)); cg.add((d, by, proj))
+        if o.get('type') == 'attachment':
+            isrc = attrib_inject(o.get('attachment') or {})
+            if isrc: injc[(d, by, proj, isrc)] += 1
+            continue
+        msg = o.get('message')
+        if not isinstance(msg, dict): continue
+        c = msg.get('content')
+        if isinstance(c, str):
+            # user-typed /slash skill-command: no Skill tool_use is emitted, so
+            # this command-name is its only trace. Count only commands that map to
+            # a known skill (builtins like /clear,/model are ignored); reuse the
+            # skill:<name> label of the model path so the two paths merge.
+            m = re.search(r'<command-name>/?([^<\s]+)</command-name>', c)
+            if m and m.group(1).split(':')[-1] in skill_leaves:
+                tool[(d, 'claude', by, proj, 'skill:' + m.group(1))] += 1
+            continue
+        if not isinstance(c, list): continue
+        for b in c:
+            if isinstance(b, dict) and b.get('type') == 'tool_use':
+                n = b.get('name', '?')
+                if n == 'Skill':
+                    n = 'skill:' + str((b.get('input') or {}).get('skill', '?'))
+                tool[(d, 'claude', by, proj, n)] += 1
+    return tool, injc, tg, cg
+
+def scan_codex_file(f):
     by, proj = codex_context(f)
+    tool = collections.Counter(); tg = set()
     for line in open(f, errors='ignore'):
         try: record = json.loads(line)
         except Exception: continue
         t = pts(record.get('timestamp', '') or '')
         if not t: continue
         d = t.date().isoformat()
-        tool_scanned_groups.add((d, 'codex', by, proj))
+        tg.add((d, 'codex', by, proj))
         payload = record.get('payload')
         if not isinstance(payload, dict) or record.get('type') != 'response_item': continue
         if payload.get('type') not in ('function_call', 'custom_tool_call'): continue
         name = payload.get('name')
-        if name: scan[(d, 'codex', by, proj, name)] += 1
+        if name: tool[(d, 'codex', by, proj, name)] += 1
+    return tool, collections.Counter(), tg, set()
+
+codex_files = glob.glob(os.path.expanduser('~/.codex/sessions/**/*.jsonl'), recursive=True)
+scan   = collections.Counter()   # (date, runtime, by, project, tool) -> count
+inj    = collections.Counter()   # (date, by, project, source) -> firings
+tool_scanned_groups = set()      # (date,runtime,by,project) groups present on disk -> scan is authoritative
+claude_scanned_groups = set()    # (date,by,project), for the Claude-only inject table
+                                 # Both are finer than whole-date: a date with project A still on disk but
+                                 # project B's logs deleted won't wipe B's accumulated rows.
+newcache = {}                    # current-disk paths only -> drops entries for deleted files
+for f, parse in [(p, scan_claude_file) for p in files] + [(p, scan_codex_file) for p in codex_files]:
+    try: stt = os.stat(f)
+    except OSError: continue
+    ent = cache.get(f)
+    if not valid_cache_entry(ent, stt):
+        tool, injc, tg, cg = parse(f)                    # changed/new file -> reparse only this one
+        ent = {'size': stt.st_size, 'mtime_ns': stt.st_mtime_ns,
+               'tool': [list(k) + [v] for k, v in tool.items()],
+               'inj':  [list(k) + [v] for k, v in injc.items()],
+               'tg':   [list(g) for g in tg], 'cg': [list(g) for g in cg]}
+    newcache[f] = ent
+    for *k, v in ent['tool']: scan[tuple(k)] += v        # every current file feeds the aggregate,
+    for *k, v in ent['inj']:  inj[tuple(k)] += v         # cached or fresh -> unchanged siblings survive
+    for g in ent['tg']: tool_scanned_groups.add(tuple(g))
+    for g in ent['cg']: claude_scanned_groups.add(tuple(g))
 
 # --- 2. merge into history DBs by REPLACE-BY-DATE (idempotent; preserves rotated-out dates) ---
 def load(path, ncols):
@@ -449,6 +575,12 @@ meta = {
 data_js = 'const DATA=' + json.dumps(meta, ensure_ascii=False, separators=(',', ':')) + ';'
 tpl = open(os.path.join(src, 'dashboard.template.html')).read()
 open(os.path.join(out, 'dashboard.html'), 'w').write(tpl.replace('/*__DATA__*/', data_js))
+
+# persist the per-file cache only after the CSVs + dashboard succeeded (temp +
+# rename, so an interrupted build can't leave a half-written state file).
+_tmp = STATE_PATH + '.tmp'
+with open(_tmp, 'w') as fh: json.dump({'signature': signature, 'files': newcache}, fh)
+os.replace(_tmp, STATE_PATH)
 
 span = f'{all_dates[0]}..{all_dates[-1]}' if all_dates else '(empty)'
 print(f'history.csv: {len(tool_rows)} rows, {meta["total"]} calls')

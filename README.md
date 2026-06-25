@@ -39,6 +39,9 @@ you; a standalone setup registers it by running `./install-daemon.sh` once
 ```
 Output goes to `~/.toolytics/` (override with `TOOLYTICS_HOME`):
 `history.csv` / `injects.csv` (cumulative DBs) + `dashboard.html`.
+Scans are incremental: unchanged transcripts are reused from a per-file cache
+(`scan-state.json`), so re-runs only reparse changed files. That cache is purely
+a speed-up — delete it any time and the next run full-scans and rebuilds it.
 
 ## Install
 toolytics scans both `~/.claude/projects` and `~/.codex/sessions`, so one install

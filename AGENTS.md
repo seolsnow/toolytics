@@ -34,7 +34,19 @@ filterable dashboard. (All projects combined, last N days.)
   - For tests, skip the browser open with `TOOLYTICS_OPEN=0`.
   - The dashboard template is `dashboard.template.html` in this folder; JSON is
     injected at the `/*__DATA__*/` slot.
-- **Cumulative strategy (core)**: the scan reads every jsonl on disk with no time
+- **Incremental scan (`scan-state.json`)**: the scan is per-file cached, not a full
+  reparse each run. Each transcript's per-file aggregate (tool rows, inject rows,
+  covered groups) is keyed by `(size, mtime_ns)` in `~/.toolytics/scan-state.json`;
+  unchanged files are reused without parsing, **but their cached counts still feed
+  the run-level aggregate** — so replace-by-group never drops an unchanged sibling's
+  rows when another file in the same group changes (the bug a naive
+  changed-files-only scan would have). It's a perf cache, not a source of truth:
+  delete it and the next run full-scans and rebuilds it. A signature
+  (`cache_version` + `TOOLYTICS_TRIM` + Claude label map + skill-leaf set +
+  inject-attribution maps) invalidates the whole cache when label/classification
+  inputs change. Written temp+rename only after the CSVs and dashboard succeed
+  (atomic). Malformed matching entries are ignored per-file and rebuilt.
+- **Cumulative strategy (core)**: the scan covers every jsonl on disk with no time
   window. `history.csv` is merged by **replace-by-covered-group**
   (`date,runtime,triggered_by,project`); the Claude-only `injects.csv`
   uses its equivalent Claude group. Covered rows get replaced
@@ -86,8 +98,8 @@ filterable dashboard. (All projects combined, last N days.)
   bookmark of the static file is a no-wait alternative, not a separate
   onboarding path. Power users can pre-authorize
   `Bash(bash *toolytics*build.sh*)` in settings.
-- **Rescan time**: full cold scan ~3s (currently ~1700 files). Per the ponytail
-  comment, switch to mtime-incremental if it gets slow.
+- **Rescan time**: cold scan ~3s (currently ~1700 files); warm (cache-hit) rescan
+  is ~5× faster since only changed/new files are reparsed (see Incremental scan).
 - **Skill roster**: disk inventory (`~/.claude/skills` + `plugins` +
   per-project `<cwd>/.claude/skills`) ∪ every skill ever used in the full history →
   zero-count skills always show (`DATA.skill_inv`). Pinned client-side as
@@ -143,6 +155,9 @@ filterable dashboard. (All projects combined, last N days.)
   cache (no regression to a basename after disk skew) + opt-in alias seeding,
   the `/slash` skill-command capture (a string-content `<command-name>` mapping
   to a disk skill becomes a `skill:` row; a builtin like `/clear` is ignored),
+  the **incremental scan** (two files in one group; appending to one keeps the
+  unchanged sibling's cached count → 2,2,3; Claude label changes invalidate stale
+  cached labels; malformed cache entries are rebuilt),
   and that all three plugin manifests agree on `version`. A regression guard for
   the non-trivial logic.
 - **Project labels**: default is the home-relative path (`hsc/rain/foo`). The
@@ -181,11 +196,11 @@ filterable dashboard. (All projects combined, last N days.)
 - Codex hook verified in a fresh CLI thread: `/hooks` shows `SessionStart`
   with `5` installed / `5` active hooks, and the detailed SessionStart list
   includes `Plugin - toolytics@toolytics` running
-  `toolytics/0.1.9/install-daemon.sh ensure`; trust status is `Trusted`.
-- Codex plugin reinstalled after the 0.1.9 bump: `codex plugin marketplace add .`
+  `toolytics/0.2.0/install-daemon.sh ensure`; trust status is `Trusted`.
+- Codex plugin reinstalled after the 0.2.0 bump: `codex plugin marketplace add .`
   repaired a stale marketplace source from the deleted
   `.worktrees/codex-plugin-packaging` path to this repo, and
-  `codex plugin add toolytics@toolytics` installed/enabled 0.1.9. Verified with
+  `codex plugin add toolytics@toolytics` installed/enabled 0.2.0. Verified with
   `codex plugin list` and a non-opening installed-cache build.
 - Public Codex install: `.agents/plugins/marketplace.json` switched from a local
   `./` source to a GitHub URL source (`{source:"url", url:…/toolytics.git,
@@ -232,6 +247,8 @@ collision.)
   (date,triggered_by,project,source,count)
 - (generated, `~/.toolytics/`) `inject-map.json` — learned command→label attribution
   cache (monotonic; survives plugin hook version skew)
+- (generated, `~/.toolytics/`) `scan-state.json` — per-file aggregate scan cache
+  (perf only; safe to delete → next run full-scans and rebuilds it)
 - (generated, `~/.toolytics/`) `dashboard.html` — self-contained dashboard with
   data inlined
 - (generated, `~/.toolytics/`) `scheduler.log` — daily collector daemon run log
