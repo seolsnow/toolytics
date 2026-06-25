@@ -4,7 +4,7 @@
   "owner": { "name": "seolsnow" },
   "metadata": {
     "description": "Marketplace for the Claude Code + Codex usage-tracking tool",
-    "version": "0.2.0"
+    "version": "0.3.0"
   },
   "plugins": [
     {

@@ -1,7 +1,9 @@
 {
   "name": "toolytics",
   "description": "Dashboard of your Claude Code and Codex tool usage + a daemon that collects daily before transcript cleanup",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "author": { "name": "seolsnow" },
+  "homepage": "https://github.com/seolsnow/toolytics",
+  "repository": "https://github.com/seolsnow/toolytics",
   "license": "MIT"
 }

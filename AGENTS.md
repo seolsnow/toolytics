@@ -98,8 +98,9 @@ filterable dashboard. (All projects combined, last N days.)
   bookmark of the static file is a no-wait alternative, not a separate
   onboarding path. Power users can pre-authorize
   `Bash(bash *toolytics*build.sh*)` in settings.
-- **Rescan time**: cold scan ~3s (currently ~1700 files); warm (cache-hit) rescan
-  is ~5× faster since only changed/new files are reparsed (see Incremental scan).
+- **Rescan time**: roughly ~2ms/file cold (e.g. ~1700 files ≈ 3s); warm (cache-hit)
+  rescan is several× faster since only changed/new files are reparsed (see
+  Incremental scan).
 - **Skill roster**: disk inventory (`~/.claude/skills` + `plugins` +
   per-project `<cwd>/.claude/skills`) ∪ every skill ever used in the full history →
   zero-count skills always show (`DATA.skill_inv`). Pinned client-side as

@@ -21,8 +21,10 @@ aggregate. toolytics reads `~/.claude/projects/**/*.jsonl` and
 
 Everything is filterable in the browser (by runtime, direct/delegated, project,
 date range, tool search) — the dashboard is one self-contained HTML file with
-the data inlined, so you can open or share it offline. Injection and
-skill-inventory data currently come from Claude Code only.
+the data inlined, so you can open or archive it offline. If you share that file,
+treat it as local usage metadata: project labels and tool/skill/plugin counts
+are embedded in the HTML. Injection and skill-inventory data currently come from
+Claude Code only.
 
 It also **outlives log cleanup.** Claude Code deletes transcripts after
 ~30 days; toolytics keeps a cumulative CSV and (optionally) runs a daily
@@ -32,6 +34,8 @@ you; a standalone setup registers it by running `./install-daemon.sh` once
 (see below).
 
 ## Quick start
+Requires `bash` and `python3`.
+
 ```sh
 ./build.sh               # scan everything → update cumulative DBs → build dashboard → open browser
 ./build.sh 7             # default view to last 7 days (full history is still kept)
@@ -54,6 +58,10 @@ Clone the repo and run the build; it collects every runtime it finds on disk:
 ./install-daemon.sh      # (optional) register the daily collector so history survives log cleanup
 ```
 `install-daemon.sh` is idempotent — re-running just refreshes the registration.
+The daily collector installer supports macOS launchd and Linux systemd/cron. On
+native Windows there is no auto-daemon — run `./build.sh` yourself (or via Task
+Scheduler), or use WSL for the daemon path. Remove it any time with
+`./install-daemon.sh --remove`.
 
 ### As a Codex plugin (auto-registers the daemon)
 
@@ -87,7 +95,10 @@ claude plugin install toolytics@toolytics --scope user
 Once installed, a SessionStart hook self-installs the daily collector daemon
 (macOS launchd / Linux systemd·cron), which gathers data before transcript
 cleanup (default 30 days) so past history is preserved. This auto-registration
-also applies to the Codex plugin above.
+also applies to the Codex plugin above. The daemon outlives the plugin, so to
+stop it run `install-daemon.sh --remove` **before** uninstalling the plugin
+(while the script is still on disk); otherwise its daily run just fails harmlessly
+once the script path is gone.
 
 ## Permissions — prompts depend on your client configuration
 

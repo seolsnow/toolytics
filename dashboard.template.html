@@ -316,7 +316,8 @@ $('#f-reset').addEventListener('click',()=>{
 const allProj=()=>S.projs.size===PROJECTS.length;
 function passToolScope(r){return (S.runtime==='all'||r[COL.runtime]===S.runtime) &&
   (S.by==='all'||r[COL.by]===S.by) && r[COL.date]>=S.from && r[COL.date]<=S.to;}
-function passTool(r){return passToolScope(r) && (allProj()||S.projs.has(r[COL.proj]));}
+function passSearch(r){return !S.q || r[COL.tool].toLowerCase().includes(S.q) || display(r[COL.tool]).toLowerCase().includes(S.q);}
+function passTool(r){return passToolScope(r) && passSearch(r) && (allProj()||S.projs.has(r[COL.proj]));}
 function passInject(r){return S.runtime!=='codex' && (S.by==='all'||r[ICOL.by]===S.by) &&
   (allProj()||S.projs.has(r[ICOL.proj])) && r[ICOL.date]>=S.from && r[ICOL.date]<=S.to;}
 function rollup(rows,keyfn){const m=new Map();
@@ -334,7 +335,6 @@ const heat=t=>`rgb(${lerp(HOT[0],COOL[0],t)},${lerp(HOT[1],COOL[1],t)},${lerp(HO
 function render(sel,pairs,total,opts){
   opts=opts||{}; const host=$(sel); const key=opts.key;
   let pinned = opts.pinned || [];
-  if(S.q){ pinned=[]; pairs=pairs.filter(p=>{const m=p[2]||{}; return !m.divider && !m.always && p[0].toLowerCase().includes(S.q);}); }
   const npages=Math.max(1,Math.ceil(pairs.length/PAGE));
   let pg=Math.min(S.page[key]||0,npages-1); if(pg<0)pg=0; if(key)S.page[key]=pg;
   const max=pairs.length?pairs[0][1]:1, lmax=Math.log(max+1), lmin=Math.log(2);
@@ -435,6 +435,7 @@ function paint(){
     .filter(([leaf,inf])=>inf.project==null||S.projs.has(inf.project))  // project-local skills hide under other project filters
     .map(([leaf,inf])=>({label:inf.label,origin:inf.origin,count:skCount[leaf]||0}));
   if(S.skOrigin!=='all') skillRows=skillRows.filter(s=>s.origin===S.skOrigin);
+  if(S.q) skillRows=skillRows.filter(s=>s.label.toLowerCase().includes(S.q));
   skillRows.sort((a,b)=>b.count-a.count || a.label.localeCompare(b.label));
   const barOf=(v,mx)=>{const lmx=Math.log(mx+1),lmn=Math.log(2);
     return {w:Math.max(1.5,mx?(v/mx)*100:1.5),
@@ -451,7 +452,7 @@ function paint(){
   const unused=toSkillPairs(unusedSkillRows);
   // real auto-injection firings (hook attachments), filtered, on their own scale
   let al=[];
-  if(S.skOrigin!=='user'){
+  if(!S.q && S.skOrigin!=='user'){
     const ic={};
     (DATA.injects||[]).filter(passInject).forEach(r=>{ic[r[ICOL.source]]=(ic[r[ICOL.source]]||0)+r[ICOL.n];});
     const ent=Object.entries(ic).sort((a,b)=>b[1]-a[1]);
@@ -466,7 +467,7 @@ function paint(){
     : [];
 
   const mcp=rollup(rows.filter(r=>r[COL.tool].startsWith('mcp__')),r=>r[COL.tool]);
-  const proj=rollup(ROWS.filter(passToolScope),r=>r[COL.proj]);
+  const proj=rollup(ROWS.filter(r=>passToolScope(r)&&passSearch(r)),r=>r[COL.proj]);
 
   $('#total').textContent=fmt(total);
   const scope=(S.runtime==='all'?'all runtimes':S.runtime)+' · '+(S.by==='main'?'main':S.by==='agent'?'subagent':'all layers');

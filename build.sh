@@ -68,6 +68,11 @@ La = {}                                                                     # or
 assert attrib('x/check-setup.sh', {}, {}, La, {'check-setup.sh': 'superpowers'}) == 'superpowers'
 assert La.get('x/check-setup.sh') == 'superpowers', "alias did not seed the cache"
 
+# 6b. data inlining escapes '<' so a name with '</script>' can't break out of the
+# inlined <script> when the dashboard is shared (mirror of the build's one-liner).
+_evil = json.dumps({'t': 'skill:</script><img onerror=alert(1)>'}).replace('<', '\\u003c')
+assert '</script' not in _evil and '<img' not in _evil and '\\u003c/script' in _evil, "data inlining did not escape '<'"
+
 # 7. Codex scan: main/subagent calls are collected separately and a legacy Claude
 # history row survives the schema migration.
 script = sys.argv[1]
@@ -134,6 +139,8 @@ with tempfile.TemporaryDirectory() as home:
     assert 'inf.project==null||S.projs.has(inf.project)' in dashboard, "skill universe is not project-filtered"
     assert 'id="f-runtime"' in dashboard, "dashboard has no runtime filter"
     assert 'function passTool(r)' in dashboard, "dashboard does not filter six-field tool rows"
+    assert 'function passSearch(r)' in dashboard, "dashboard search is not applied at row-filter level"
+    assert 'const proj=rollup(ROWS.filter(r=>passToolScope(r)&&passSearch(r)),r=>r[COL.proj]);' in dashboard, "project rollup ignores tool search"
 
 # 8. incremental scan: the per-file cache must not drop an unchanged sibling's
 # count. Two Codex files in ONE (date,runtime,by,project) group; appending to
@@ -572,7 +579,11 @@ meta = {
     'generated': datetime.datetime.now().strftime('%Y-%m-%d %H:%M'),
     'total': sum(r[5] for r in tool_rows),
 }
-data_js = 'const DATA=' + json.dumps(meta, ensure_ascii=False, separators=(',', ':')) + ';'
+# escape '<' so a tool/skill/project name containing '</script>' can't break out
+# of the inlined <script> (the dashboard is meant to be shared). '<' only ever
+# appears inside JSON string values, so this can't corrupt the structure.
+_json = json.dumps(meta, ensure_ascii=False, separators=(',', ':')).replace('<', '\\u003c')
+data_js = 'const DATA=' + _json + ';'
 tpl = open(os.path.join(src, 'dashboard.template.html')).read()
 open(os.path.join(out, 'dashboard.html'), 'w').write(tpl.replace('/*__DATA__*/', data_js))
 

@@ -11,7 +11,14 @@ Build the dashboard from the installed plugin copy.
 2. Locate the installed build script, then run it:
 
    ```sh
-   build_script="$(find "$HOME/.codex/plugins/cache/toolytics/toolytics/" -name build.sh -print -quit)"
+   build_script="$(python3 - <<'PY'
+from pathlib import Path
+def key(p):
+    return tuple(int(x) if x.isdigit() else x for x in p.parent.name.split('.'))
+paths = sorted((Path.home() / '.codex/plugins/cache/toolytics/toolytics').glob('*/build.sh'), key=key)
+print(paths[-1] if paths else '')
+PY
+)"
    bash "$build_script"
    bash "$build_script" 7
    ```
