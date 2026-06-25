@@ -13,9 +13,6 @@ aggregate. toolytics reads `~/.claude/projects/**/*.jsonl` and
   `mcp__server__method` call, ranked by count across *all* your projects.
 - **Claude vs. Codex, direct vs. delegated.** Filter the two runtimes, then
   split main-session calls from calls your subagents/workflows made for you.
-- **What am I spending?** A **Tokens & API value** section shows per-model token
-  totals and an estimated API list value (also in `tokens.csv` + `build.sh`
-  output). It's an estimate from list prices, not a bill.
 - **Which skills auto-fire?** Real counts of SessionStart hook injections
   (the skills/guidance silently prepended to your sessions), so you can see
   what's actually running vs. just installed.
@@ -24,8 +21,8 @@ aggregate. toolytics reads `~/.claude/projects/**/*.jsonl` and
 
 Everything is filterable in the browser (by runtime, direct/delegated, project,
 date range, tool search) — the dashboard is one self-contained HTML file with
-the data inlined, so you can open or share it offline. Token, cost, injection,
-and skill-inventory data currently come from Claude Code only.
+the data inlined, so you can open or share it offline. Injection and
+skill-inventory data currently come from Claude Code only.
 
 It also **outlives log cleanup.** Claude Code deletes transcripts after
 ~30 days; toolytics keeps a cumulative CSV and (optionally) runs a daily
@@ -41,7 +38,7 @@ you; a standalone setup registers it by running `./install-daemon.sh` once
 ./build.sh --selfcheck   # regression guard for the merge & attribution logic
 ```
 Output goes to `~/.toolytics/` (override with `TOOLYTICS_HOME`):
-`history.csv` / `tokens.csv` / `injects.csv` (cumulative DBs) + `dashboard.html`.
+`history.csv` / `injects.csv` (cumulative DBs) + `dashboard.html`.
 
 ## Install
 toolytics scans both `~/.claude/projects` and `~/.codex/sessions`, so one install

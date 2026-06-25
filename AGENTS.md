@@ -25,8 +25,8 @@ filterable dashboard. (All projects combined, last N days.)
     injected at the `/*__DATA__*/` slot.
 - **Cumulative strategy (core)**: the scan reads every jsonl on disk with no time
   window. `history.csv` is merged by **replace-by-covered-group**
-  (`date,runtime,triggered_by,project`); Claude-only `tokens.csv` and `injects.csv`
-  use their equivalent Claude group. Covered rows get replaced
+  (`date,runtime,triggered_by,project`); the Claude-only `injects.csv`
+  uses its equivalent Claude group. Covered rows get replaced
   wholesale (= rerunning doesn't inflate them, idempotent), while older dates the
   scan didn't see are preserved. So even if logs rotate/are deleted, past
   aggregates survive and keep accumulating. Only the dashboard's default view is
@@ -81,16 +81,9 @@ filterable dashboard. (All projects combined, last N days.)
   ever used in the full history → zero-count skills always show (`DATA.skill_inv`).
   Pinned client-side as `SKILL_UNIVERSE`; only the counts react to the filter
   window. user/plugin toggle (presence of a colon; a bare name prefers user).
-- **Tokens·cost** (`DATA.tokens`, `tokens.csv`; Claude Code only): per-line `message.usage`
-  (input/output/cache_read/cache_creation 5m·1h) aggregated by
-  `(date,by,project,model)`. Models are normalized (`claude-opus-4-8`→`opus-4-8`,
-  etc.). Cost = tokens × list price (input/output + cache read 0.1× / cache write
-  5m 1.25× · 1h 2×). **The price table is baked into the `PRICE` dict in
-  `build.sh` (as of 2026-06) — when Anthropic changes prices, fix the one line
-  there** (a ponytail calibration knob). Unregistered models (`<synthetic>`, etc.)
-  cost 0 but their tokens still show. `build.sh` echoes the estimated total API
-  value after accumulating. The dashboard's **Tokens & API value** section
-  (`#s-spend`) renders this last, at the very bottom below Tools.
+- **Scope — tool use only**: toolytics counts *tool calls*, not tokens or cost.
+  Token/$-spend tracking was deliberately removed (2026-06) — it's out of scope
+  for a tool-usage dashboard. Don't re-add a tokens/price/`API value` section.
 - **Auto-injection, measured** (`DATA.injects`; Claude Code only): counts only transcript
   `attachment.type=hook_success` + `hookEvent=SessionStart` (superpowers also
   emits a duplicate `hook_additional_context`, which is skipped → one row per
@@ -130,11 +123,12 @@ filterable dashboard. (All projects combined, last N days.)
   wholesale, but another runtime or project on the same date is preserved.
 - **self-check**: `./build.sh --selfcheck` — asserts merge behavior,
   legacy Claude-history migration, Codex main/subagent attribution and both
-  Codex call payload types, plus the inject reverse-mapping
+  Codex call payload types, the inject reverse-mapping
   (idempotent · preserves rotated dates · clears covered-but-empty dates), the
-  inject reverse-mapping (exact-match on command·statusMessage), and the learned
-  cache (no regression to a basename after disk skew) + opt-in alias seeding. A
-  regression guard for the non-trivial logic.
+  inject reverse-mapping (exact-match on command·statusMessage), the learned
+  cache (no regression to a basename after disk skew) + opt-in alias seeding, and
+  that all three plugin manifests agree on `version`. A regression guard for the
+  non-trivial logic.
 - **Project labels**: default is the home-relative path (`hsc/rain/foo`). The
   personal hardcoded convention (`hsc/` trim) was removed → safe to distribute. To
   shorten, use only the `TOOLYTICS_TRIM="hsc,work"` env (comma-separated leading
@@ -159,10 +153,36 @@ filterable dashboard. (All projects combined, last N days.)
   ranked rows (was showing 20-minus-pins). heat-ramp bars, **never**
   `text-transform:uppercase` (preserve original case — [[feedback_no_forced_case]]).
 - **Dashboard filters**: runtime (All/Claude/Codex) · triggered_by
-  (All/Direct/Delegated) · project · date range (native date input) · tool search.
+  (All/Main/Subagent) · project · date range (native date input) · tool search.
   All tool rows re-aggregate client-side in JS.
   Heat-ramp bars (bigger value → hotter orange).
 - Artifact URL: https://claude.ai/code/artifact/f680d4ec-5c2c-4590-8ee5-6fb5af7cd0fa
+
+## TODO / backlog
+
+**Open**
+1. **Pending version bump** — bump 0.1.7 → next with `./bump-version.sh X.Y.Z`,
+   then reinstall the plugin so `/toolytics` (which runs the versioned plugin-cache
+   copy) picks up the current template/build changes. Deferred deliberately to
+   bundle several changes into one bump.
+2. **(optional) Public Codex install** — `.agents/plugins/marketplace.json` uses a
+   local `./` source (clone-only). ponytail uses a GitHub URL source
+   (`{source:"url", url:…git, ref:"main"}`) so anyone can install. Adopt only if
+   toolytics should be publicly installable via Codex, not just from a clone.
+3. **(optional) Verify Codex hook fires** — the explicit `"hooks"` key is now in
+   `.codex-plugin/plugin.json`; confirm once via `/hooks` in a real Codex thread
+   that the toolytics SessionStart hook shows up for trust.
+
+**Done (recent)**
+- Token / cost / "API value" tracking **removed** — out of scope for a tool-use
+  dashboard (build.sh, template, tokens.csv, docs, self-check all stripped).
+- Distribution study (ponytail + superpowers) → produced the items above.
+- Version-bump automation: `bump-version.sh` + a `--selfcheck` version-agree assert.
+- Codex hooks declared explicitly; Claude marketplace `$schema` added.
+- Direct/Delegated → **Main / Subagent**. Filter tool → Skills (already worked).
+
+(Older, still-open ideas live in their own bullets above: project-scoped skill
+visibility, skill leaf-basename collision.)
 
 ## Artifacts
 - `build.sh` — scan→accumulate→build→open pipeline (reusable).
@@ -170,11 +190,15 @@ filterable dashboard. (All projects combined, last N days.)
 - `install-daemon.sh` — per-OS daily collector scheduler installer (macOS launchd /
   Linux systemd·cron, generated dynamically, idempotent; `install` | `ensure` |
   `--remove`).
+- `bump-version.sh` — sets the version in all three manifests at once
+  (`./bump-version.sh X.Y.Z`); `build.sh --selfcheck` asserts they stay in sync.
 - `.claude-plugin/plugin.json` — the `toolytics` plugin manifest.
 - `.claude-plugin/marketplace.json` — marketplace for local install (this repo is
-  itself the plugin, `source: "./"`). Install:
-  `/plugin marketplace add <repo-path>` → `toolytics@toolytics`.
-- `.codex-plugin/plugin.json` — Codex plugin manifest.
+  itself the plugin, `source: "./"`; carries `$schema` for editor validation).
+  Install: `/plugin marketplace add <repo-path>` → `toolytics@toolytics`.
+- `.codex-plugin/plugin.json` — Codex plugin manifest; declares `"hooks":
+  "./hooks/hooks.json"` explicitly (matches ponytail/superpowers) so the
+  SessionStart hook is wired without relying on auto-discovery.
 - `.agents/plugins/marketplace.json` — repository-scoped Codex marketplace;
   its `./` local source is this repository's plugin root.
 - `skills/toolytics/SKILL.md` — Codex dashboard workflow.
@@ -182,8 +206,6 @@ filterable dashboard. (All projects combined, last N days.)
   guard. Codex requires explicit hook trust through `/hooks`.
 - (generated, `~/.toolytics/`) `history.csv` — tool cumulative DB
   (date,runtime,triggered_by,project,tool,count)
-- (generated, `~/.toolytics/`) `tokens.csv` — token cumulative DB
-  (date,triggered_by,project,model,input,output,cache_read,cw5m,cw1h)
 - (generated, `~/.toolytics/`) `injects.csv` — auto-injection cumulative DB
   (date,triggered_by,project,source,count)
 - (generated, `~/.toolytics/`) `inject-map.json` — learned command→label attribution

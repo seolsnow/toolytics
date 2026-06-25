@@ -1,9 +1,10 @@
 {
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "toolytics",
   "owner": { "name": "seolsnow" },
   "metadata": {
     "description": "Marketplace for the Claude Code + Codex usage-tracking tool",
-    "version": "0.1.7"
+    "version": "0.1.8"
   },
   "plugins": [
     {

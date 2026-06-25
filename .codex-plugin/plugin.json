@@ -1,6 +1,6 @@
 {
   "name": "toolytics",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "description": "Local Claude Code and Codex tool-usage dashboard with a daily collector",
   "author": {
     "name": "seolsnow"
@@ -15,6 +15,7 @@
     "usage"
   ],
   "skills": "./skills/",
+  "hooks": "./hooks/hooks.json",
   "interface": {
     "displayName": "toolytics",
     "shortDescription": "Your Claude Code and Codex usage dashboard",

@@ -2,7 +2,6 @@
 # Claude Code + Codex toolytics tracker.
 # Scans ~/.claude/projects/**/*.jsonl and ~/.codex/sessions/**/*.jsonl, accumulates tidy tables
 #   tools:   (date, runtime, triggered_by, project, tool, count)
-#   tokens:  (date, triggered_by, project, model, input, output, cache_read, cw5m, cw1h)
 #   injects: (date, triggered_by, project, source, count)
 # into persistent history DBs, rebuilds a self-contained dashboard, and opens it.
 #
@@ -111,6 +110,17 @@ with tempfile.TemporaryDirectory() as home:
     dashboard = open(os.path.join(out, 'dashboard.html')).read()
     assert 'id="f-runtime"' in dashboard, "dashboard has no runtime filter"
     assert 'function passTool(r)' in dashboard, "dashboard does not filter six-field tool rows"
+
+# 8. plugin manifests agree on version (bump-version.sh keeps them in sync).
+repo = os.path.dirname(os.path.abspath(sys.argv[1]))
+vers = {}
+for rel, path in [('.claude-plugin/plugin.json', ('version',)),
+                  ('.claude-plugin/marketplace.json', ('metadata', 'version')),
+                  ('.codex-plugin/plugin.json', ('version',))]:
+    obj = json.load(open(os.path.join(repo, rel)))
+    for k in path: obj = obj[k]
+    vers[rel] = obj
+assert len(set(vers.values())) == 1, f"plugin manifest versions disagree: {vers}"
 print("selfcheck OK: all assertions passed")
 PY
   exit 0
@@ -124,20 +134,6 @@ import sys, os, glob, json, csv, datetime, collections
 
 view_days = int(sys.argv[1]); src, out = sys.argv[2], sys.argv[3]
 HOME = os.path.expanduser('~')
-
-# --- model pricing (USD per 1M tokens), as of 2026-06. Update here when Anthropic changes them. ---
-# cache read = 0.1x input, cache write 5m = 1.25x input, 1h = 2x input.
-PRICE = {  # canonical key (substring-matched against the logged model id)
-  'fable-5': (10.0, 50.0), 'mythos-5': (10.0, 50.0),
-  'opus-4-8': (5.0, 25.0), 'opus-4-7': (5.0, 25.0), 'opus-4-6': (5.0, 25.0), 'opus-4-5': (5.0, 25.0),
-  'sonnet-4-6': (3.0, 15.0), 'sonnet-4-5': (3.0, 15.0),
-  'haiku-4-5': (1.0, 5.0),
-}
-def canon_model(m):
-    m = (m or '').lower()
-    for key in PRICE:
-        if key in m: return key
-    return m or 'unknown'
 
 # optional cosmetic shortening: TOOLYTICS_TRIM="hsc,work" strips a leading path
 # segment from labels. Empty by default — no personal prefix baked into the distro.
@@ -270,10 +266,9 @@ for d, fs in bydir.items():
     labels[d] = label_from_cwd(cwd) if cwd else label_from_dir(d)
 
 scan   = collections.Counter()   # (date, runtime, by, project, tool) -> count
-tok    = collections.Counter()   # (date, by, project, model, field) -> tokens
 inj    = collections.Counter()   # (date, by, project, source) -> firings
 tool_scanned_groups = set()      # (date,runtime,by,project) groups present on disk -> scan is authoritative
-claude_scanned_groups = set()    # (date,by,project), for Claude-only token/inject tables
+claude_scanned_groups = set()    # (date,by,project), for the Claude-only inject table
                                  # Both are finer than whole-date: a date with project A still on disk but
                                  # project B's logs deleted won't wipe B's accumulated rows.
 for f in files:
@@ -293,15 +288,6 @@ for f in files:
             continue
         msg = o.get('message')
         if not isinstance(msg, dict): continue
-        u = msg.get('usage')
-        if isinstance(u, dict):
-            cm = canon_model(msg.get('model'))
-            cc = u.get('cache_creation') or {}
-            tok[(d, by, proj, cm, 'input')]      += u.get('input_tokens', 0) or 0
-            tok[(d, by, proj, cm, 'output')]     += u.get('output_tokens', 0) or 0
-            tok[(d, by, proj, cm, 'cache_read')] += u.get('cache_read_input_tokens', 0) or 0
-            tok[(d, by, proj, cm, 'cw5m')]       += cc.get('ephemeral_5m_input_tokens', 0) or 0
-            tok[(d, by, proj, cm, 'cw1h')]       += cc.get('ephemeral_1h_input_tokens', 0) or 0
         c = msg.get('content')
         if not isinstance(c, list): continue
         for b in c:
@@ -390,26 +376,6 @@ inj_rows = merge_write(os.path.join(out, 'injects.csv'),
     load(os.path.join(out, 'injects.csv'), 5), inj)
 json.dump(LEARNED, open(LEARN_PATH, 'w'), indent=0, sort_keys=True)  # persist learned attributions
 
-# tokens DB: 5 token fields collapse into one wide row per (date,by,proj,model)
-tpath = os.path.join(out, 'tokens.csv')
-THEAD = ['date', 'triggered_by', 'project', 'model', 'input', 'output', 'cache_read', 'cw5m', 'cw1h']
-TFIELDS = ['input', 'output', 'cache_read', 'cw5m', 'cw1h']
-tok_existing = {}
-if os.path.exists(tpath):
-    with open(tpath) as fh:
-        r = csv.reader(fh); next(r, None)
-        for row in r:
-            if len(row) == 9:
-                tok_existing[tuple(row[:4])] = [int(x) for x in row[4:]]
-tok_wide = collections.defaultdict(lambda: [0, 0, 0, 0, 0])
-for (d, by, proj, model, field), v in tok.items():
-    tok_wide[(d, by, proj, model)][TFIELDS.index(field)] += v
-tok_hist = {k: v for k, v in tok_existing.items() if (k[0], k[1], k[2]) not in claude_scanned_groups}
-tok_hist.update(tok_wide)
-tok_rows = sorted([list(k) + v for k, v in tok_hist.items()])
-with open(tpath, 'w', newline='') as fh:
-    w = csv.writer(fh); w.writerow(THEAD); w.writerows(tok_rows)
-
 # --- skill inventory on disk (so never-invoked skills still show, count 0) ---
 seen = set(); skill_inv = []   # [leaf, origin, label]
 for f in sorted(glob.glob(os.path.expanduser('~/.claude/skills/*/SKILL.md'))):
@@ -423,13 +389,11 @@ for f in sorted(glob.glob(os.path.expanduser('~/.claude/plugins/**/skills/*/SKIL
     seen.add(leaf); skill_inv.append([leaf, 'plugin', (pl + ':' + leaf) if pl else leaf])
 
 # --- 3. build dashboard from full history; default view = trailing VIEW_DAYS ---
-all_dates = sorted({r[0] for r in tool_rows} | {r[0] for r in tok_rows})
+all_dates = sorted({r[0] for r in tool_rows})
 today = datetime.date.today()
 default_from = max(all_dates[0], (today - datetime.timedelta(days=view_days)).isoformat()) if all_dates else today.isoformat()
 meta = {
     'rows': tool_rows,
-    'tokens': tok_rows,
-    'price': PRICE,
     'skill_inv': skill_inv,
     'injects': inj_rows,
     'default_from': default_from,
@@ -441,16 +405,8 @@ data_js = 'const DATA=' + json.dumps(meta, ensure_ascii=False, separators=(',', 
 tpl = open(os.path.join(src, 'dashboard.template.html')).read()
 open(os.path.join(out, 'dashboard.html'), 'w').write(tpl.replace('/*__DATA__*/', data_js))
 
-# cost estimate over full history (display-only echo)
-def cost_of(model, inp, out_, cr, c5, c1):
-    p = PRICE.get(model)
-    if not p: return 0.0
-    pin, pout = p
-    return (inp*pin + out_*pout + cr*0.1*pin + c5*1.25*pin + c1*2*pin) / 1e6
-total_cost = sum(cost_of(r[3], *r[4:]) for r in tok_rows)
 span = f'{all_dates[0]}..{all_dates[-1]}' if all_dates else '(empty)'
 print(f'history.csv: {len(tool_rows)} rows, {meta["total"]} calls')
-print(f'tokens.csv:  {len(tok_rows)} rows, ~${total_cost:,.0f} est. API value')
 print(f'injects.csv: {len(inj_rows)} rows; inject sources: {sorted({r[3] for r in inj_rows})}')
 print(f'dashboard.html: {os.path.getsize(os.path.join(out,"dashboard.html"))//1024} KB  span {span}  (default view: last {view_days}d)')
 PY
