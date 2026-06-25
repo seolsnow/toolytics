@@ -52,10 +52,16 @@ a speed-up — delete it any time and the next run full-scans and rebuilds it.
 - Linux: full support, including a systemd user timer or cron fallback.
 - WSL: use the Linux path. Data, daemon registration, and `~/.toolytics` live
   inside WSL.
-- Native Windows: manual builds only for now. Use a shell with `bash` and
-  `python3`, run `./build.sh`, and open `~/.toolytics/dashboard.html` yourself
-  if the browser does not auto-open. The plugin hook is fail-open, but it cannot
-  register the daily collector until native Windows scheduling is implemented.
+- Native Windows: full support, via Git Bash + Python 3 + Windows Task Scheduler.
+  `install-daemon.sh` registers a daily `schtasks` job that runs `build.sh`
+  through a small `~/.toolytics/run-daemon.cmd` wrapper. Prerequisites: Git Bash
+  (or any MSYS/Cygwin shell) on PATH, and a real Python 3 reachable as
+  `python3` — not the Microsoft Store `python3.exe` stub. The winget
+  `Python.Python.3.x` package ships only `python.exe`, so create a one-time
+  hardlink (`New-Item -ItemType HardLink python3.exe -Target python.exe` in the
+  Python install dir) before the first build. Scheduled tasks run in the user
+  session, so missed runs (logged out at the scheduled time) are skipped rather
+  than caught up — same constraint as the macOS LaunchAgent.
 
 VS Code does not need special integration. toolytics scans the transcript roots
 visible from the process that runs it. In local VS Code terminals that means the
@@ -73,10 +79,9 @@ Clone the repo and run the build; it collects every runtime it finds on disk:
 ./install-daemon.sh      # (optional) register the daily collector so history survives log cleanup
 ```
 `install-daemon.sh` is idempotent — re-running just refreshes the registration.
-The daily collector installer supports macOS launchd and Linux systemd/cron. On
-native Windows there is no auto-daemon — run `./build.sh` yourself (or via Task
-Scheduler), or use WSL for the daemon path. Remove it any time with
-`./install-daemon.sh --remove`.
+The daily collector installer supports macOS launchd, Linux systemd/cron, and
+native Windows via `schtasks` (Git Bash or any MSYS/Cygwin shell). Remove it
+any time with `./install-daemon.sh --remove`.
 
 ### As a Codex plugin (auto-registers the daemon)
 
@@ -108,8 +113,8 @@ claude plugin marketplace add seolsnow/toolytics
 claude plugin install toolytics@toolytics --scope user
 ```
 Once installed, a SessionStart hook self-installs the daily collector daemon
-(macOS launchd / Linux systemd·cron), which gathers data before transcript
-cleanup (default 30 days) so past history is preserved. This auto-registration
+(macOS launchd / Linux systemd·cron / Windows Task Scheduler), which gathers
+data before transcript cleanup (default 30 days) so past history is preserved. This auto-registration
 also applies to the Codex plugin above. The daemon outlives the plugin, so to
 stop it run `install-daemon.sh --remove` **before** uninstalling the plugin
 (while the script is still on disk); otherwise its daily run just fails harmlessly
