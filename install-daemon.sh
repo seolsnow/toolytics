@@ -115,8 +115,11 @@ win_paths() {
   WIN_LOG="$(cygpath -w "$LOG")"
   WIN_WRAPPER="$(cygpath -w "$WRAPPER")"
   WIN_PYDIR="$(cygpath -w "$PYDIR")"
-  BASH_PATH="$(command -v bash)"
-  WIN_BASH_DIR="$(dirname "$(cygpath -w "$BASH_PATH")")"
+  # dirname on the POSIX path first; POSIX dirname only recognizes '/' as a
+  # separator, so doing it after cygpath -w would return '.' on a stricter
+  # coreutils (Git Bash's GNU 8.32 happens to handle backslashes, but Cygwin /
+  # MSYS1 / alpine do not).
+  WIN_BASH_DIR="$(cygpath -w "$(dirname "$(command -v bash)")")"
 }
 win_write_wrapper() {
   win_paths

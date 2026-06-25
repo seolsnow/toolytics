@@ -252,6 +252,11 @@ HOME = os.path.expanduser('~').replace(os.sep, '/')
 # segment from labels. Empty by default — no personal prefix baked into the distro.
 TRIM = [p.strip().strip('/') for p in os.environ.get('TOOLYTICS_TRIM', '').split(',') if p.strip()]
 def label_from_cwd(cwd):
+    # Transcript `cwd` is whatever the launching process recorded — on Windows
+    # that's a backslash path like 'C:\\Users\\me\\repo'. Normalize before
+    # comparing to HOME so the prefix match (and TRIM, and project-local skill
+    # tagging via proj_cwds) work the same on every OS.
+    cwd = cwd.replace(os.sep, '/') if os.sep != '/' else cwd
     rel = cwd[len(HOME):].lstrip('/') if cwd.startswith(HOME) else cwd.lstrip('/')
     for pre in TRIM:                                    # strip first matching leading segment
         if rel == pre: rel = ''; break
